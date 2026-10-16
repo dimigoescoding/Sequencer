@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Scenarios — {{ project.name }}{% endblock %}
+{% block content %}
+{% include "partials/project_nav.html" with nav="scenarios" %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h3 mb-0">Scenarios</h1>
+  <a class="btn btn-primary" href="{% url 'scenarios:create' project.pk %}">New scenario</a>
+</div>
+<p class="text-secondary">Example names such as Delivery Priority or Minimum Sailing Distance are not created for you.</p>
+{% if not scenarios %}
+  <div class="card"><div class="card-body empty-state">No scenarios yet.</div></div>
+{% else %}
+  <div class="table-responsive card"><table class="table table-sm mb-0">
+    <thead><tr><th>Name</th><th>Dataset</th><th>Constraints</th><th>Runs</th><th></th></tr></thead>
+    <tbody>
+      {% for scenario in scenarios %}
+        <tr>
+          <td><a href="{{ scenario.get_absolute_url }}">{{ scenario.name }}</a><div class="small text-secondary">{{ scenario.description|truncatewords:16 }}</div></td>
+          <td>{% if scenario.dataset_version %}v{{ scenario.dataset_version.version_number }}{% else %}Not selected{% endif %}</td>
+          <td>{{ scenario.constraints.count }}</td>
+          <td>{{ scenario.runs.count }}</td>
+          <td class="text-end">
+            <form method="post" action="{% url 'scenarios:duplicate' project.pk scenario.pk %}" class="d-inline">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" type="submit">Duplicate</button></form>
+            <form method="post" action="{% url 'scenarios:delete' project.pk scenario.pk %}" class="d-inline" data-confirm="Delete this scenario and its runs?">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit">Delete</button></form>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+{% endif %}
+{% endblock %}

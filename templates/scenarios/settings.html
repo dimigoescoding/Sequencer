@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Vessel settings — {{ scenario.name }}{% endblock %}
+{% block content %}
+{% include "partials/project_nav.html" with nav="vessel" %}
+{% include "partials/scenario_nav.html" with snav="overview" %}
+<h1 class="h3">Vessel settings — {{ scenario.name }}</h1>
+<form method="post" class="col-lg-7">
+  {% csrf_token %}
+  {% include "partials/form_fields.html" %}
+  <button class="btn btn-primary" type="submit">Save settings</button>
+</form>
+{% endblock %}

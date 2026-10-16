@@ -1,0 +1,6 @@
+<ul class="nav nav-pills subnav mb-4 flex-nowrap overflow-auto">
+  <li class="nav-item"><a class="nav-link {% if snav == 'overview' %}active{% endif %}" href="{{ scenario.get_absolute_url }}">Overview</a></li>
+  <li class="nav-item"><a class="nav-link {% if snav == 'constraints' %}active{% endif %}" href="{% url 'constraints:list' project.pk scenario.pk %}">Constraints</a></li>
+  <li class="nav-item"><a class="nav-link {% if snav == 'generate' %}active{% endif %}" href="{% url 'scenarios:generate' project.pk scenario.pk %}">Generate Sequence</a></li>
+  <li class="nav-item"><a class="nav-link {% if snav == 'results' %}active{% endif %}" href="{% url 'scenarios:runs' project.pk scenario.pk %}">Results</a></li>
+</ul>
