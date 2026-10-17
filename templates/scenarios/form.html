@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} — Sequencer{% endblock %}
+{% block content %}
+{% include "partials/project_nav.html" with nav="scenarios" %}
+{% if scenario %}{% include "partials/scenario_nav.html" with snav="overview" %}{% endif %}
+<h1 class="h3">{{ title }}</h1>
+<form method="post" class="col-lg-7">
+  {% csrf_token %}
+  {% include "partials/form_fields.html" %}
+  <button class="btn btn-primary" type="submit">Save</button>
+</form>
+{% endblock %}

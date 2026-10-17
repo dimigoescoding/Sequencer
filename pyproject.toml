@@ -1,0 +1,17 @@
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "sequencer.settings.local"
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["sequencer", "apps", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"sequencer/settings/*" = ["F403", "F405"]
+"*/migrations/*" = ["E501", "I001"]

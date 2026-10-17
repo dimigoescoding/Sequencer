@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Add constraint — {{ scenario.name }}{% endblock %}
+{% block content %}
+{% include "partials/project_nav.html" with nav="scenarios" %}
+{% include "partials/scenario_nav.html" with snav="constraints" %}
+<h1 class="h3">Add a constraint</h1>
+<p>Choose a supported type. Rules use the fields below. Free-text logic is not accepted and is never executed.</p>
+{% if not has_dataset %}<div class="alert alert-warning">Select a valid dataset on the scenario before adding constraints.</div>{% endif %}
+{% if punch_message %}<div class="alert alert-secondary">{{ punch_message }}</div>{% endif %}
+<div class="list-group">
+  {% for item in library %}
+    {% if item.reason %}
+      <div class="list-group-item">
+        <strong>{{ item.label }}</strong>
+        <p class="mb-1">{{ item.summary }}</p>
+        <p class="mb-0 text-danger">Unavailable: {{ item.reason }}</p>
+      </div>
+    {% else %}
+      <a class="list-group-item list-group-item-action" href="{% url 'constraints:create' project.pk scenario.pk item.key %}">
+        <strong>{{ item.label }}</strong>
+        <p class="mb-0">{{ item.summary }}</p>
+      </a>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endblock %}

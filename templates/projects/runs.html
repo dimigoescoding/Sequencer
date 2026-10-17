@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% load sequencer_tags %}
+{% block title %}Runs — {{ project.name }}{% endblock %}
+{% block content %}
+{% include "partials/project_nav.html" with nav="runs" %}
+<h1 class="h3">Optimisation runs</h1>
+{% if not runs %}
+  <div class="card"><div class="card-body empty-state">No optimisation runs for this project.</div></div>
+{% else %}
+  <div class="table-responsive card"><table class="table table-sm mb-0">
+    <thead><tr><th>Run</th><th>Scenario</th><th>Dataset</th><th>Status</th><th>Validation</th><th>When</th></tr></thead>
+    <tbody>
+      {% for run in runs %}
+        <tr>
+          <td><a href="{% url 'optimisation:detail' run.pk %}">{{ run.pk }}</a></td>
+          <td>{{ run.scenario.name }}</td>
+          <td>v{{ run.dataset_version.version_number }}</td>
+          <td><span class="badge {{ run.status|badge_class }}">{{ run.status }}</span></td>
+          <td><span class="badge {{ run.validation_status|badge_class }}">{{ run.validation_status }}</span></td>
+          <td>{{ run.created_at|date:"Y-m-d H:i" }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+{% endif %}
+{% endblock %}

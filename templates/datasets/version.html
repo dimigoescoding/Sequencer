@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% load sequencer_tags %}
+{% block title %}Dataset v{{ dataset.version_number }} — {{ project.name }}{% endblock %}
+{% block content %}
+{% include "partials/project_nav.html" with nav="data" %}
+<div class="d-flex justify-content-between align-items-start">
+  <div>
+    <h1 class="h3">Dataset version {{ dataset.version_number }}</h1>
+    <p>{{ dataset.error_count }} errors · {{ dataset.warning_count }} warnings · {{ dataset.included_count }} included</p>
+  </div>
+  <div class="d-flex gap-2">
+    {% if dataset.original_file %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'datasets:original' project.pk dataset.pk %}">Original file</a>{% endif %}
+    {% if dataset.can_activate and not dataset.is_active %}
+      <form method="post" action="{% url 'datasets:activate' project.pk dataset.pk %}">{% csrf_token %}<button class="btn btn-primary btn-sm" type="submit">Activate</button></form>
+    {% elif dataset.is_active %}
+      <span class="badge text-bg-success">Active</span>
+    {% endif %}
+  </div>
+</div>
+{% if dataset.error_count %}
+  <div class="alert alert-danger">Critical errors block activation and optimisation. Upload a corrected workbook. This version stays unchanged.</div>
+{% elif dataset.warning_count %}
+  <div class="alert alert-warning">Warnings do not block optimisation. Constraint types that need the missing values stay unavailable.</div>
+{% endif %}
+{% if issues %}
+  <div class="card mb-3"><div class="card-body">
+    <h2 class="h5">Errors and warnings</h2>
+    <ul class="mb-0">
+      {% for issue in issues %}
+        <li><span class="badge {{ issue.severity|badge_class }}">{{ issue.severity }}</span> {{ issue.message }}</li>
+      {% endfor %}
+    </ul>
+  </div></div>
+{% endif %}
+{% if scenarios %}
+  <div class="card mb-3"><div class="card-body">
+    <h2 class="h6">Fixed position against scenario capacity</h2>
+    <ul class="mb-0">
+      {% for scenario in scenarios %}
+        <li>{{ scenario.name }}: capacity {{ scenario.vessel_settings.max_foundations_per_trip }}. Positions above that capacity are reported before optimisation.</li>
+      {% endfor %}
+    </ul>
+  </div></div>
+{% endif %}
+{% include "datasets/_table.html" %}
+{% endblock %}

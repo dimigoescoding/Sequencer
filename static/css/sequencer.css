@@ -1,0 +1,60 @@
+:root {
+  --sq-navy: #0f2c4c;
+  --sq-ink: #1c2833;
+  --sq-line: #d5dde5;
+  --sq-bg: #f4f6f8;
+}
+
+body {
+  background: var(--sq-bg);
+  color: var(--sq-ink);
+}
+
+.navbar {
+  background: var(--sq-navy);
+}
+
+.navbar-brand,
+.navbar .nav-link,
+.navbar .btn {
+  color: #fff;
+}
+
+.page-wrap {
+  max-width: 1280px;
+}
+
+.card {
+  border-color: var(--sq-line);
+}
+
+.table {
+  font-size: 0.92rem;
+}
+
+.table th {
+  white-space: nowrap;
+}
+
+.empty-state {
+  padding: 2rem 1rem;
+  color: #52606d;
+}
+
+.subnav .nav-link {
+  color: var(--sq-navy);
+}
+
+.subnav .nav-link.active {
+  background: var(--sq-navy);
+  color: #fff;
+}
+
+.mono {
+  font-variant-numeric: tabular-nums;
+}
+
+footer.site-footer {
+  color: #52606d;
+  font-size: 0.85rem;
+}

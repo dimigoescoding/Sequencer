@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% load sequencer_tags %}
+{% block title %}{{ scenario.name }} — Sequencer{% endblock %}
+{% block content %}
+{% include "partials/project_nav.html" with nav="scenarios" %}
+{% include "partials/scenario_nav.html" with snav="overview" %}
+<div class="d-flex justify-content-between">
+  <div>
+    <h1 class="h3">{{ scenario.name }}</h1>
+    <p>{{ scenario.description|default:"No description." }}</p>
+  </div>
+  <a class="btn btn-outline-primary btn-sm" href="{% url 'scenarios:edit' project.pk scenario.pk %}">Rename</a>
+</div>
+<div class="row g-3">
+  <div class="col-md-4"><div class="card h-100"><div class="card-body">
+    <h2 class="h6">Dataset</h2>
+    {% if scenario.dataset_version %}
+      <p>Version {{ scenario.dataset_version.version_number }} · {{ scenario.dataset_version.included_count }} included</p>
+      {% if project.active_dataset and project.active_dataset.pk != scenario.dataset_version.pk %}
+        <p class="small text-secondary">This scenario is not using the project's currently active dataset.</p>
+      {% endif %}
+    {% else %}<p>No dataset selected.</p>{% endif %}
+  </div></div></div>
+  <div class="col-md-4"><div class="card h-100"><div class="card-body">
+    <h2 class="h6">Vessel</h2>
+    <p class="mb-1">{{ scenario.vessel_settings.max_foundations_per_trip }} foundations per trip</p>
+    <p class="mb-1">Partial final trip: {{ scenario.vessel_settings.allow_partial_final_trip|yesno:"yes,no" }}</p>
+    <p class="mb-1">Payload base: {% if scenario.vessel_settings.base_maximum_trip_payload_t %}{{ scenario.vessel_settings.base_maximum_trip_payload_t }} t{% else %}not set{% endif %}</p>
+    <p class="mb-1">Harbour: {% if scenario.vessel_settings.harbour_easting_m is not None %}{{ scenario.vessel_settings.harbour_easting_m }}, {{ scenario.vessel_settings.harbour_northing_m }}{% else %}not set{% endif %}</p>
+    <a href="{% url 'scenarios:settings' project.pk scenario.pk %}">Edit vessel settings</a>
+  </div></div></div>
+  <div class="col-md-4"><div class="card h-100"><div class="card-body">
+    <h2 class="h6">Constraints</h2>
+    <p>{{ constraints|length }} saved</p>
+    <a href="{% url 'constraints:list' project.pk scenario.pk %}">Open constraint manager</a>
+  </div></div></div>
+</div>
+<div class="card mt-3"><div class="card-body">
+  <h2 class="h6">Recent runs</h2>
+  {% if not runs %}<p class="empty-state mb-0">No runs yet. <a href="{% url 'scenarios:generate' project.pk scenario.pk %}">Generate a sequence</a>.</p>
+  {% else %}<ul class="mb-0">{% for run in runs %}<li><a href="{% url 'optimisation:detail' run.pk %}">Run {{ run.pk }}</a> <span class="badge {{ run.status|badge_class }}">{{ run.status }}</span> {{ run.created_at|date:"Y-m-d H:i" }}</li>{% endfor %}</ul>{% endif %}
+</div></div>
+{% endblock %}

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Upload — {{ project.name }}{% endblock %}
+{% block content %}
+{% include "partials/project_nav.html" with nav="data" %}
+<h1 class="h3">Upload foundation workbook</h1>
+<p>The workbook must contain a sheet named <code>Foundation_Input</code>. Each upload creates a new immutable dataset version. Formulas are not executed.</p>
+<form method="post" enctype="multipart/form-data" class="col-lg-7">
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+  {% include "partials/form_fields.html" %}
+  <button class="btn btn-primary" type="submit">Upload</button>
+  <a class="btn btn-link" href="{% url 'datasets:template' project.pk %}">Download template</a>
+</form>
+{% endblock %}

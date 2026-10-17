@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Account — Sequencer{% endblock %}
+{% block content %}
+<h1 class="h3">Account</h1>
+<div class="card col-lg-6">
+  <div class="card-body">
+    <p><strong>Username</strong><br>{{ user.get_username }}</p>
+    <p><strong>Email</strong><br>{{ user.email|default:"—" }}</p>
+    <a class="btn btn-outline-primary" href="{% url 'accounts:password_change' %}">Change password</a>
+  </div>
+</div>
+{% endblock %}

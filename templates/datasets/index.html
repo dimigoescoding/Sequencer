@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% load sequencer_tags %}
+{% block title %}Foundation data — {{ project.name }}{% endblock %}
+{% block content %}
+{% include "partials/project_nav.html" with nav="data" %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h3 mb-0">Foundation data</h1>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-primary" href="{% url 'datasets:template' project.pk %}">Download template</a>
+    <a class="btn btn-primary" href="{% url 'datasets:upload' project.pk %}">Upload workbook</a>
+  </div>
+</div>
+<div class="card mb-3"><div class="card-body">
+  <h2 class="h5">Dataset versions</h2>
+  {% if not versions %}<p class="empty-state mb-0">No uploads yet. Download the template and upload a Foundation_Input sheet.</p>{% else %}
+    <div class="table-responsive"><table class="table table-sm mb-0">
+      <thead><tr><th>Version</th><th>Uploaded</th><th>Rows</th><th>Included</th><th>Errors</th><th>Warnings</th><th>Active</th><th></th></tr></thead>
+      <tbody>
+        {% for version in versions %}
+          <tr>
+            <td><a href="{% url 'datasets:version' project.pk version.pk %}">v{{ version.version_number }}</a></td>
+            <td>{{ version.created_at|date:"Y-m-d H:i" }}</td>
+            <td>{{ version.row_count }}</td>
+            <td>{{ version.included_count }}</td>
+            <td>{{ version.error_count }}</td>
+            <td>{{ version.warning_count }}</td>
+            <td>{% if version.is_active %}<span class="badge text-bg-success">Active</span>{% else %}—{% endif %}</td>
+            <td>{% if version.can_activate and not version.is_active %}<form method="post" action="{% url 'datasets:activate' project.pk version.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-primary" type="submit">Activate</button></form>{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+  {% endif %}
+</div></div>
+{% include "datasets/_table.html" %}
+{% endblock %}
