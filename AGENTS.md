@@ -11,4 +11,5 @@ Sequencer MVP 1 is a Django application that sequences offshore wind foundation 
 - Never execute formulas, macros, or code from uploaded files or from constraint parameters.
 - Update tests and documentation when functionality changes.
 - Keep the MVP boundaries unless the product specification is deliberately revised. Do not add maps, other packages, weather, cost, Gantt charts, PDF reports, registration, or multi-vessel planning in passing.
+- Keep the Render Free deployment inside one web service and one Postgres database. Do not add a persistent disk, a second worker, a solver limit above 30 seconds, or a shell-only setup step. Original uploads stay behind Django's storage API.
 - Prefer complete, tested changes over isolated snippets. Run `pytest` and `ruff check .` before considering a change finished.

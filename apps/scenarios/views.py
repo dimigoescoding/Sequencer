@@ -4,7 +4,7 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 
 from apps.access import owned_project, owned_scenario
-from apps.optimisation.services.runner import SolveBlocked, blocking_messages, execute
+from apps.optimisation.services.runner import SolveBlocked, SolveBusy, blocking_messages, execute
 from apps.projects.services import duplicate_scenario
 from apps.scenarios.forms import ScenarioForm, VesselSettingsForm
 from apps.scenarios.models import VesselSettings
@@ -119,6 +119,11 @@ def generate(request, project_id: int, scenario_id: int):
             except SolveBlocked as exc:
                 conflicts = exc.conflicts
                 messages.error(request, "The solver was not started.")
+            except SolveBusy:
+                messages.error(
+                    request,
+                    "A sequence is already running on this server. Wait for it to finish, then try again.",
+                )
             else:
                 if run.status == "INFEASIBLE":
                     messages.error(

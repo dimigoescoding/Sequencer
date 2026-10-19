@@ -1,5 +1,6 @@
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView, PasswordChangeView
+from django.http import HttpResponse
 from django.views.generic import TemplateView
 
 from apps.ui import apply_bootstrap
@@ -22,6 +23,10 @@ class SequencerPasswordChangeView(PasswordChangeView):
         form = super().get_form(form_class)
         apply_bootstrap(form)
         return form
+
+
+def health(request):
+    return HttpResponse("ok", content_type="text/plain")
 
 
 class AccountView(LoginRequiredMixin, TemplateView):

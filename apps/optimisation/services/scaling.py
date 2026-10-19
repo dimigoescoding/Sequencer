@@ -21,8 +21,10 @@ from decimal import ROUND_HALF_UP, Decimal
 NORM = 1000
 PRIMARY_WEIGHT = 10_000_000
 SOLVER_SEED = 1
-MAX_INCLUDED_FOUNDATIONS = 100
-MAX_DISTANCE_FOUNDATIONS = 30
+# Sized for one Render Free web instance: 512 MB RAM and 0.1 CPU.
+MAX_INCLUDED_FOUNDATIONS = 40
+MAX_DISTANCE_FOUNDATIONS = 20
+MAX_SOLVER_TIME_LIMIT_SECONDS = 30
 
 
 def scaled_penalty(raw: int, max_raw: int, severity: int) -> int:
