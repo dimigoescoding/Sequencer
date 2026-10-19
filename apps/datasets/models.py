@@ -89,6 +89,21 @@ class Foundation(models.Model):
         return self.foundation_id
 
 
+class StoredFile(models.Model):
+    """Workbook bytes kept in the database so a Free Render instance can sleep."""
+
+    path = models.CharField(max_length=300, unique=True)
+    content = models.BinaryField()
+    size = models.PositiveIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["path"])]
+
+    def __str__(self) -> str:
+        return self.path
+
+
 class DatasetIssue(models.Model):
     class Severity(models.TextChoices):
         ERROR = "error", "Error"

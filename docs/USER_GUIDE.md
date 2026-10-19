@@ -42,7 +42,7 @@ Each scenario has its own settings.
 
 - Maximum foundations per trip defaults to 4.
 - The final trip may be partial. Turn that off only when every trip, including the last, must be full.
-- Solver time limit defaults to 60 seconds. The allowed range is 1–120.
+- Solver time limit defaults to 20 seconds. The allowed range is 1–30. The page waits for that solve, and the server runs one solve at a time.
 - Payload, transit speed, and harbour coordinates stay empty until you enter them. Empty does not mean zero, and it does not enable payload or harbour-leg checks.
 
 The number of trips is the included foundation count divided by the maximum per trip, rounded up.

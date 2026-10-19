@@ -47,7 +47,7 @@ class VesselSettings(models.Model):
     base_maximum_trip_payload_t = models.DecimalField(
         max_digits=14, decimal_places=3, null=True, blank=True
     )
-    solver_time_limit_seconds = models.PositiveIntegerField(default=60)
+    solver_time_limit_seconds = models.PositiveIntegerField(default=20)
     transit_speed_knots = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     harbour_easting_m = models.DecimalField(max_digits=16, decimal_places=3, null=True, blank=True)
     harbour_northing_m = models.DecimalField(max_digits=16, decimal_places=3, null=True, blank=True)
@@ -62,6 +62,10 @@ class VesselSettings(models.Model):
             models.CheckConstraint(
                 condition=models.Q(solver_time_limit_seconds__gte=1),
                 name="solver_time_limit_at_least_one",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(solver_time_limit_seconds__lte=30),
+                name="solver_time_limit_at_most_30",
             ),
         ]
 

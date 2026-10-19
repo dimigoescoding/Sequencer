@@ -1,16 +1,17 @@
-# Render blueprint for Sequencer MVP 1.
-# PostgreSQL is required. Uploaded workbooks use Django's storage API.
-# The disk below keeps uploads across deploys; the database remains the audit record
-# if a disk is not attached. See README, "Known MVP limitations".
+# Render Free plan.
+# One web service (512 MB, 0.1 CPU) and one Postgres database (1 GB, expires after 30 days).
+# Free web services cannot attach a disk and lose local files whenever they sleep.
+# Original workbooks are stored in Postgres. Do not add a second free service:
+# a workspace receives 750 free instance hours per month.
 
 services:
   - type: web
     name: sequencer
     runtime: python
-    plan: starter
+    plan: free
     buildCommand: "./build.sh"
-    startCommand: "gunicorn sequencer.wsgi:application --bind 0.0.0.0:$PORT --timeout 180 --workers 2"
-    healthCheckPath: /accounts/login/
+    startCommand: "./start.sh"
+    healthCheckPath: /healthz/
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.3"
@@ -24,20 +25,18 @@ services:
         value: ".onrender.com"
       - key: SECURE_SSL_REDIRECT
         value: "true"
-      - key: WEB_CONCURRENCY
-        value: "2"
       - key: DATABASE_URL
         fromDatabase:
           name: sequencer-db
           property: connectionString
-      - key: MEDIA_ROOT
-        value: /var/data/media
-    disk:
-      name: sequencer-data
-      mountPath: /var/data
-      sizeGB: 1
+      - key: DJANGO_SUPERUSER_USERNAME
+        sync: false
+      - key: DJANGO_SUPERUSER_EMAIL
+        sync: false
+      - key: DJANGO_SUPERUSER_PASSWORD
+        sync: false
 
 databases:
   - name: sequencer-db
-    plan: basic-256mb
+    plan: free
     postgresMajorVersion: "16"

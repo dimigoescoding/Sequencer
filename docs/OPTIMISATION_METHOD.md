@@ -94,7 +94,7 @@ Overall validation is `Passed` only when no hard check failed. The sequence tabl
 
 ## Known limitations
 
-- MVP 1 solves at most 100 included foundations. Distance constraints are limited to 30 because every consecutive pair is modelled explicitly.
+- MVP 1 solves at most 40 included foundations. Distance constraints are limited to 20 because every consecutive pair is modelled explicitly, and the Render Free instance has 512 MB of RAM and 0.1 CPU. The solver time limit is capped at 30 seconds for the same reason.
 - Payload, harbour coordinates, and transit speed have no engineering default. Distance harbour legs stay unavailable until coordinates are entered on the constraint or the vessel settings.
 - Transit speed is stored for the scenario record. MVP 1 does not convert distance into time.
 - Two-foundation hard precedence cycles are rejected before the solver. Longer cycles are left for CP-SAT and return `INFEASIBLE` when they cannot be satisfied.

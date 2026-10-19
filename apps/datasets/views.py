@@ -121,7 +121,7 @@ def dataset_original(request, project_id: int, version_id: int):
     try:
         handle = version.original_file.open("rb")
     except (FileNotFoundError, OSError) as exc:
-        raise Http404("The original workbook is no longer on disk.") from exc
+        raise Http404("The original workbook is no longer stored.") from exc
     return FileResponse(
         handle, as_attachment=True, filename=version.original_filename or "Foundation_Input.xlsx"
     )

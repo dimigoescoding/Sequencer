@@ -72,4 +72,6 @@ A stored run is approved only when its status is `OPTIMAL` or `FEASIBLE` and val
 
 ## File storage
 
-Dataset uploads use `FileField`. Production and local settings both set `STORAGES["default"]` to Django's filesystem storage. Replacing that backend with object storage does not require changes to parsing or optimisation. Export bytes are generated on download from the database.
+Dataset uploads use `FileField`. Local development stores those files on disk. Production uses `DatabaseStorage`, which writes the bytes to `StoredFile` in Postgres. Render Free cannot keep a disk across sleep or redeploy, and the Free web service has no shell. Export bytes are still generated on download from the sequence tables. Replacing `STORAGES["default"]` with object storage does not require changes to parsing or optimisation.
+
+The Free deployment runs one Gunicorn worker. `execute` holds a process lock so a second solve is refused instead of loading a second CP-SAT model into the 512 MB instance. `/healthz/` does not touch the database.

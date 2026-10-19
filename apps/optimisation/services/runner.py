@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from decimal import Decimal
 from typing import Any
 
@@ -13,7 +14,7 @@ from apps.datasets.services.mapping import to_foundation_input
 from apps.optimisation.models import OptimisationRun, SequenceResult, TripResult, ValidationResult
 from apps.optimisation.services.conflicts import find_conflicts
 from apps.optimisation.services.evaluation import evaluate
-from apps.optimisation.services.scaling import SOLVER_SEED
+from apps.optimisation.services.scaling import MAX_SOLVER_TIME_LIMIT_SECONDS, SOLVER_SEED
 from apps.optimisation.services.solver import solve_order
 from apps.optimisation.services.types import ConstraintInput, ValidationRow, VesselConfig
 from apps.scenarios.models import Scenario, VesselSettings
@@ -25,12 +26,21 @@ class SolveBlocked(Exception):
         self.conflicts = conflicts
 
 
+class SolveBusy(Exception):
+    def __init__(self) -> None:
+        super().__init__("A sequence is already being generated.")
+
+
+_solve_lock = threading.Lock()
+
+
 def vessel_config(settings: VesselSettings) -> VesselConfig:
+    time_limit = min(settings.solver_time_limit_seconds, MAX_SOLVER_TIME_LIMIT_SECONDS)
     return VesselConfig(
         max_foundations_per_trip=settings.max_foundations_per_trip,
         allow_partial_final_trip=settings.allow_partial_final_trip,
         base_maximum_trip_payload_t=settings.base_maximum_trip_payload_t,
-        solver_time_limit_seconds=settings.solver_time_limit_seconds,
+        solver_time_limit_seconds=time_limit,
         transit_speed_knots=settings.transit_speed_knots,
         harbour_easting_m=settings.harbour_easting_m,
         harbour_northing_m=settings.harbour_northing_m,
@@ -80,6 +90,15 @@ def blocking_messages(scenario: Scenario) -> list[str]:
 
 
 def execute(scenario: Scenario) -> OptimisationRun:
+    if not _solve_lock.acquire(blocking=False):
+        raise SolveBusy()
+    try:
+        return _execute(scenario)
+    finally:
+        _solve_lock.release()
+
+
+def _execute(scenario: Scenario) -> OptimisationRun:
     messages = blocking_messages(scenario)
     if messages:
         raise SolveBlocked(messages)
