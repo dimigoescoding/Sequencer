@@ -1013,45 +1013,18 @@ def _avoid_first_trips(constraint, placements, vessel, add, governing, penalties
 def _distance(constraint, placements, vessel, add, governing):
     _mark(governing, [item.foundation.foundation_id for item in placements], constraint.name)
     distance = _route_distance(placements, constraint, vessel)
-    if constraint.enforcement == "hard":
-        add(
-            "Within-trip distance",
-            constraint.name,
-            "Minimise Euclidean metres",
-            f"{distance} m",
-            "Information",
-            [],
-            "Hard distance minimisation has no numeric limit, so a positive distance is not a violation. "
-            "It is optimised ahead of soft preferences and is not relaxed into the soft penalty band.",
-        )
-        return _empty()
-    max_leg = 0
-    for left in placements:
-        for right in placements:
-            max_leg = max(max_leg, metres_between(left.foundation, right.foundation))
-    legs = sum(
-        1
-        for trip in {item.trip for item in placements}
-        for _index in range(max(0, sum(1 for item in placements if item.trip == trip) - 1))
-    )
-    harbour = harbour_coordinates(constraint.parameters, vessel)
-    harbour_extra = 2 * len({item.trip for item in placements}) if harbour else 0
-    max_raw = max_leg * max(legs, 1) + (max_leg * harbour_extra)
-    penalty = (
-        scaled_penalty(distance, max(max_raw, 1), constraint.severity or 0)
-        if distance and max_raw
-        else 0
-    )
     add(
-        "Soft within-trip distance",
+        "Within-trip distance",
         constraint.name,
-        "Minimise Euclidean metres",
-        f"{distance} m; penalty={penalty}",
-        "Soft trade-off" if penalty else "Passed",
+        "Shortest route inside each trip",
+        f"{distance} m",
+        "Information",
         [],
-        "A positive route length is reported as a soft trade-off. It does not fail hard validation.",
+        "The solver chooses which locations share a trip. Their order is then the shortest "
+        "route that still satisfies the hard constraints. There is no maximum distance, so "
+        "the metres are information and are not a pass or fail limit.",
     )
-    return penalty, set(), set(), set(), set()
+    return _empty()
 
 
 def _route_distance(

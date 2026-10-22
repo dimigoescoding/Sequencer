@@ -1,5 +1,8 @@
 """CP-SAT behaviour for hard constraints, soft penalties, and infeasible models."""
 
+import time
+from decimal import Decimal
+
 import pytest
 from apps.constraints.models import Constraint
 from apps.datasets.services.uploads import activate_dataset, create_dataset_version
@@ -217,3 +220,139 @@ def test_spider_locations_lead_and_one_shallow_is_allowed_per_trip():
         assert len([name for name in group if name in {"A", "B"}]) <= 1
     review = evaluate(foundations, limits, rules, order)
     assert review.validation_status == "Passed"
+
+
+def test_within_trip_route_is_shortened_after_the_trip_is_chosen():
+    from apps.optimisation.services.routing import metres_between
+    from apps.optimisation.services.within_trip import optimise_within_trip_routes
+
+    foundations = [
+        foundation("A", easting_m=Decimal(0), northing_m=Decimal(0)),
+        foundation("B", easting_m=Decimal(5), northing_m=Decimal(0)),
+        foundation("C", easting_m=Decimal(1), northing_m=Decimal(0)),
+    ]
+    rule = constraint(
+        "Infield sailing optimization FOU",
+        "minimise_within_trip_distance",
+        {"include_harbour_legs": False},
+        enforcement="soft",
+        severity=50,
+    )
+    limits = vessel(max_foundations_per_trip=3)
+    ordered = optimise_within_trip_routes(["A", "B", "C"], foundations, limits, [rule])
+    assert _path(foundations, ordered) == 5
+    assert _path(foundations, ["A", "B", "C"]) == 9
+    assert ordered[1] == "C"
+    review = evaluate(foundations, limits, [rule], ordered)
+    assert review.validation_status == "Passed"
+    assert any(
+        row.check_name == "Within-trip distance" and row.status == "Information"
+        for row in review.validation_rows
+    )
+    untouched = optimise_within_trip_routes(
+        ["A", "B", "C"],
+        foundations,
+        limits,
+        [
+            constraint(
+                "Route",
+                "minimise_within_trip_distance",
+                {"include_harbour_legs": False},
+                active=False,
+            )
+        ],
+    )
+    assert untouched == ["A", "B", "C"]
+    assert metres_between(foundations[0], foundations[2]) == 1
+
+
+def test_within_trip_route_keeps_a_hard_position_rule():
+    from apps.optimisation.services.within_trip import optimise_within_trip_routes
+
+    foundations = [
+        foundation(
+            "S4", easting_m=Decimal(0), northing_m=Decimal(0), attributes={"Spider location": True}
+        ),
+        foundation(
+            "A", easting_m=Decimal(1), northing_m=Decimal(0), attributes={"Spider location": False}
+        ),
+        foundation(
+            "B", easting_m=Decimal(10), northing_m=Decimal(0), attributes={"Spider location": False}
+        ),
+    ]
+    rules = [
+        constraint(
+            "Spider locations FOU",
+            "matching_installed_first",
+            {"attribute": "Spider location", "operator": "equals", "value": "YES"},
+        ),
+        constraint(
+            "Infield sailing optimization FOU",
+            "minimise_within_trip_distance",
+            {"include_harbour_legs": False},
+            enforcement="soft",
+            severity=50,
+        ),
+    ]
+    limits = vessel(max_foundations_per_trip=3)
+    ordered = optimise_within_trip_routes(["S4", "B", "A"], foundations, limits, rules)
+    assert ordered == ["S4", "A", "B"]
+    assert evaluate(foundations, limits, rules, ordered).validation_status == "Passed"
+
+
+def test_workbook_distance_finishes_and_shortens_each_trip():
+    from itertools import permutations
+
+    from apps.datasets.services.parsing import parse_workbook
+    from apps.optimisation.services.types import ConstraintInput
+    from apps.optimisation.services.within_trip import optimise_within_trip_routes
+
+    with open("tests/fixtures/sequencer_input.xlsx", "rb") as handle:
+        parsed = parse_workbook(handle.read())
+    rules = [
+        ConstraintInput(
+            name=item.name,
+            constraint_type=item.constraint_type,
+            parameters=item.parameters,
+            enforcement=item.enforcement,
+            active=item.active,
+            severity=item.severity,
+            description=item.explanation,
+        )
+        for item in parsed.constraints
+    ]
+    limits = vessel(max_foundations_per_trip=4, solver_time_limit_seconds=5)
+    started = time.perf_counter()
+    status, _objective, _runtime, _message, solved = solve_order(parsed.foundations, limits, rules)
+    ordered = optimise_within_trip_routes(solved, parsed.foundations, limits, rules)
+    elapsed = time.perf_counter() - started
+    assert status == "OPTIMAL"
+    assert elapsed < 5
+    assert len(ordered) == 50
+    assert _path(parsed.foundations, ordered) < _path(parsed.foundations, solved)
+    review = evaluate(parsed.foundations, limits, rules, ordered)
+    assert review.validation_status == "Passed"
+    spiders = {
+        item.foundation_id
+        for item in parsed.foundations
+        if item.attributes.get("Spider location") is True
+    }
+    assert set(ordered[: len(spiders)]) == spiders
+    for start in range(0, 50, 4):
+        group = ordered[start : start + 4]
+        positions = range(start + 1, start + 1 + len(group))
+        straddles_spiders = any(position <= len(spiders) for position in positions) and any(
+            position > len(spiders) for position in positions
+        )
+        if straddles_spiders or len(group) < 2:
+            continue
+        shortest = min(_path(parsed.foundations, list(perm)) for perm in permutations(group))
+        assert _path(parsed.foundations, group) == shortest
+
+
+def _path(foundations, names: list[str]) -> int:
+    from apps.optimisation.services.routing import metres_between
+
+    by_id = {item.foundation_id: item for item in foundations}
+    points = [by_id[name] for name in names]
+    return sum(metres_between(left, right) for left, right in zip(points, points[1:], strict=False))

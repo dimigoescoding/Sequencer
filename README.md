@@ -207,7 +207,7 @@ Do not add a second Free web service in the same workspace if you want the full 
 - At most 60 included foundations per solve, including within-trip distance.
 - Solver time is limited to 1–600 seconds. A feasible result inside the limit is labelled `FEASIBLE`, not `OPTIMAL`, unless OR-Tools proves optimality.
 - The hosted database on the Free plan expires 30 days after creation. Upgrade it before the grace period ends if the data should be kept.
-- A hard "minimise distance" constraint has no numeric distance cap. It is a primary objective term. The validator reports it as information, not a pass/fail limit.
+- An active distance constraint reorders the locations inside each trip after the solver has chosen those locations. It has no numeric distance cap. The validator reports the metres as information, not a pass/fail limit.
 - A soft payload limit can return an overloaded trip. The interface warns about that, and the excess is a soft trade-off.
 - Direct conflicts are blocked before the solver. Indirect conflicts become `INFEASIBLE` with no sequence. Nothing is relaxed automatically.
 - Spreadsheet `Fixed_*` columns are inputs, not automatic constraints.
