@@ -66,7 +66,7 @@ The objective is the sum of these scaled terms, plus the primary distance weight
 
 CP-SAT minimises the sum. `num_search_workers` is 1 and `random_seed` is 1 (`SOLVER_SEED`), so repeated runs with the same data and settings follow the same search. A change to settings, constraints, or the time limit can change a feasible-but-not-optimal result.
 
-The time limit is the scenario's `solver_time_limit_seconds`, chosen on the settings page from 1 to 30 seconds.
+The time limit is the scenario's `solver_time_limit_seconds`, chosen on the settings page from 1 to 600 seconds.
 
 ## Feasible versus optimal status
 
@@ -94,7 +94,7 @@ Overall validation is `Passed` only when no hard check failed. The sequence tabl
 
 ## Known limitations
 
-- MVP 1 solves at most 60 included foundations, including within-trip distance. The supplied workbook has 50 locations. The Render Free instance has 512 MB of RAM and 0.1 CPU, and the solver time limit stays capped at 30 seconds. A run that stops at the time limit is `FEASIBLE` or `UNKNOWN`, not a fabricated optimum.
+- MVP 1 solves at most 60 included foundations, including within-trip distance. The supplied workbook has 50 locations. The Render Free instance has 512 MB of RAM and 0.1 CPU. The solver time limit is capped at 600 seconds. A run that stops at the time limit is `FEASIBLE` or `UNKNOWN`, not a fabricated optimum.
 
 Workbook severities on a 0–1 scale are mapped onto 1–100 before the penalty (0.5 becomes 50). Hard rows use `NA` and have no severity. These named workbook rules are applied as written; the explanation cell is stored and is not parsed:
 

@@ -38,7 +38,7 @@ A project can hold several scenarios on the same dataset. Example names such as 
 
 Each scenario shows the settings from the workbook. `MP per trip` is the only setting in the supplied file. You can change its value. The number of trips is the included location count divided by `MP per trip`, rounded up. The final trip may be shorter than that capacity.
 
-Solver time is on the same settings page. Choose 1 to 30 seconds. The stored default is 20. A run that stops at that limit is feasible unless OR-Tools proves it optimal.
+Solver time is on the same settings page. Choose 1 to 600 seconds. The stored default is 20. The generate page waits until the run finishes. A run that stops at that limit is feasible unless OR-Tools proves it optimal.
 
 ## Constraints
 
