@@ -63,10 +63,7 @@ class ConstraintForm(forms.Form):
                 decimal_places=3,
                 help_text="Tonnes. This value is required. The scenario base payload is not applied for you.",
             )
-        if kind in {"fixed_trip", "fixed_vessel_position", "precedence"} or kind in {
-            "earliest_sequence",
-            "latest_sequence",
-        }:
+        if kind in {"fixed_trip", "fixed_vessel_position", "precedence", "latest_sequence"}:
             self.fields["foundation_id"] = forms.ChoiceField(
                 choices=foundation_choices,
                 required=kind in {"fixed_trip", "fixed_vessel_position"},
@@ -94,7 +91,6 @@ class ConstraintForm(forms.Form):
             "excluded_positions",
             "maximum_matching_per_trip",
             "minimum_matching_per_trip",
-            "earliest_sequence",
             "latest_sequence",
             "attribute_ordering",
             "difficulty_progression",
@@ -107,7 +103,7 @@ class ConstraintForm(forms.Form):
                 else column_choices
             )
             self.fields["attribute"] = forms.ChoiceField(
-                choices=choices, required=kind not in {"earliest_sequence", "latest_sequence"}
+                choices=choices, required=kind != "latest_sequence"
             )
             if kind != "attribute_ordering" and kind != "difficulty_progression":
                 self.fields["operator"] = forms.ChoiceField(
@@ -122,7 +118,7 @@ class ConstraintForm(forms.Form):
                     label="Upper value",
                     help_text="Used only when the operator is between.",
                 )
-        if kind in {"earliest_sequence", "latest_sequence"}:
+        if kind == "latest_sequence":
             self.fields["selector"] = forms.ChoiceField(
                 choices=[
                     ("foundation", "One foundation"),
@@ -135,6 +131,50 @@ class ConstraintForm(forms.Form):
                 initial="sequence",
             )
             self.fields["bound_value"] = forms.IntegerField(min_value=1)
+        if kind == "earliest_sequence":
+            self.fields["selector"] = forms.ChoiceField(
+                label="Applies to",
+                choices=[
+                    ("foundation", "One location"),
+                    ("attribute", "Locations with an attribute"),
+                ],
+                initial="attribute",
+                help_text="Only the selected choice is saved.",
+            )
+            self.fields["foundation_id"] = forms.ChoiceField(
+                choices=[("", "Select a location")] + foundation_choices,
+                required=False,
+                label="Location",
+            )
+            self.fields["attribute"] = forms.ChoiceField(
+                choices=[("", "Select an attribute")] + column_choices,
+                required=False,
+                label="Attribute",
+            )
+            self.fields["operator"] = forms.ChoiceField(
+                choices=[("", "Select an operator")] + [(item, item) for item in OPERATORS],
+                required=False,
+            )
+            self.fields["value"] = forms.CharField(
+                required=False,
+                help_text=(
+                    "Literal comparison value. For a Yes/No column such as Shallow location, "
+                    "enter YES."
+                ),
+            )
+            self.fields["value_to"] = forms.CharField(
+                required=False,
+                label="Upper value",
+                help_text="Used only when the operator is between.",
+            )
+            self.fields["earliest_trip"] = forms.IntegerField(
+                min_value=1,
+                label="Earliest trip",
+                help_text=(
+                    "The first trip these locations may be installed. "
+                    "Enter 2 to keep them out of the first trip."
+                ),
+            )
         if kind == "allowed_positions":
             self.fields["allowed_positions"] = forms.MultipleChoiceField(choices=position_choices)
         if kind == "excluded_positions":
@@ -246,20 +286,27 @@ class ConstraintForm(forms.Form):
                 if trips:
                     parameters["applicable_trips"] = trips
             return parameters
-        if kind in {"earliest_sequence", "latest_sequence"}:
-            parameters: dict = {}
+        if kind == "earliest_sequence":
+            if cleaned.get("selector") == "attribute":
+                parameters = self._rule(cleaned)
+            else:
+                if not cleaned.get("foundation_id"):
+                    raise forms.ValidationError("Select a location.")
+                parameters = {"foundation_id": cleaned["foundation_id"]}
+            parameters["earliest_trip"] = cleaned["earliest_trip"]
+            return parameters
+        if kind == "latest_sequence":
+            parameters = {}
             if cleaned.get("selector") == "attribute":
                 parameters.update(self._rule(cleaned))
             else:
                 if not cleaned.get("foundation_id"):
                     raise forms.ValidationError("Select a foundation.")
                 parameters["foundation_id"] = cleaned["foundation_id"]
-            sequence_key = "earliest_sequence" if kind == "earliest_sequence" else "latest_sequence"
-            trip_key = "earliest_trip" if kind == "earliest_sequence" else "latest_trip"
             if cleaned.get("bound_kind") == "trip":
-                parameters[trip_key] = cleaned["bound_value"]
+                parameters["latest_trip"] = cleaned["bound_value"]
             else:
-                parameters[sequence_key] = cleaned["bound_value"]
+                parameters["latest_sequence"] = cleaned["bound_value"]
             return parameters
         if kind == "precedence":
             parameters = {
@@ -416,18 +463,18 @@ def _initial_parameters(constraint_type: str, parameters: dict) -> dict:
         initial["applicable_trips"] = ", ".join(
             str(item) for item in parameters["applicable_trips"]
         )
-    if constraint_type in {"earliest_sequence", "latest_sequence"}:
+    if constraint_type == "earliest_sequence":
         initial["selector"] = "attribute" if parameters.get("attribute") else "foundation"
-        sequence_key = (
-            "earliest_sequence" if constraint_type == "earliest_sequence" else "latest_sequence"
-        )
-        trip_key = "earliest_trip" if constraint_type == "earliest_sequence" else "latest_trip"
-        if parameters.get(trip_key):
+        if parameters.get("earliest_trip") not in (None, ""):
+            initial["earliest_trip"] = parameters["earliest_trip"]
+    if constraint_type == "latest_sequence":
+        initial["selector"] = "attribute" if parameters.get("attribute") else "foundation"
+        if parameters.get("latest_trip"):
             initial["bound_kind"] = "trip"
-            initial["bound_value"] = parameters[trip_key]
+            initial["bound_value"] = parameters["latest_trip"]
         else:
             initial["bound_kind"] = "sequence"
-            initial["bound_value"] = parameters.get(sequence_key)
+            initial["bound_value"] = parameters.get("latest_sequence")
     if constraint_type not in CONSTRAINT_TYPES:
         return initial
     return initial

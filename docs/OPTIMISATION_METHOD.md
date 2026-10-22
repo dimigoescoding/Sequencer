@@ -33,7 +33,8 @@ Hard constraints are added with `model.Add`. They are never rewritten as penalti
 | Fixed trip | The foundation occupies a position in that trip. |
 | Fixed vessel position | The foundation occupies that position, and that trip when a trip is supplied. |
 | Allowed or excluded positions | Matching foundations may only use the permitted positions. |
-| Earliest or latest sequence | `position_of` is bounded. An optional trip bound is converted to a sequence index. |
+| Earliest trip | One location, or locations matching an attribute, cannot be installed before trip T. `position_of` is at least `(T - 1) * N + 1`. Trip 2 keeps them out of the first trip. |
+| Latest sequence | `position_of` is at most a sequence index, or at most the end of a named trip. |
 | Precedence | Successor position minus predecessor position is at least `minimum_gap`, and at most `maximum_gap` when set. A gap of 1 means the successor is strictly later. |
 | Maximum or minimum count | Matching foundations per applicable trip stay inside the count. |
 | Same trip or separate trip | `trip_of` is equal, or pairwise unequal. |

@@ -1,5 +1,5 @@
 {% for field in form %}
-  <div class="mb-3" {% if field.name == 'severity' %}id="severity-field"{% endif %} {% if field.name == 'value' %}id="value-field"{% endif %} {% if field.name == 'value_to' %}id="value-to-field"{% endif %} {% if field.name == 'foundation_id' or field.name == 'attribute' or field.name == 'operator' %}{% endif %}>
+  <div class="mb-3" data-field="{{ field.name }}" {% if field.name == 'severity' %}id="severity-field"{% endif %} {% if field.name == 'value' %}id="value-field"{% endif %} {% if field.name == 'value_to' %}id="value-to-field"{% endif %}>
     {% if field.field.widget.input_type == 'checkbox' %}
       <div class="form-check">
         {{ field }}

@@ -568,16 +568,26 @@ def _window(constraint, included, placements, vessel, add, governing, penalties)
         if not earliest and sequence > bound:
             bad.append(foundation.foundation_id)
             raw += sequence - bound
-    label = "Earliest sequence" if earliest else "Latest sequence"
+    earliest_trip = constraint.parameters.get("earliest_trip")
+    if earliest and earliest_trip not in (None, ""):
+        label = "Earliest trip"
+        target = f"trip >= {int(earliest_trip)}"
+        hard_note = "Matching locations are not installed before this trip."
+        soft_note = "A soft window penalises installation before the preferred trip."
+    else:
+        label = "Earliest sequence" if earliest else "Latest sequence"
+        target = f"{'>=' if earliest else '<='} {bound}"
+        hard_note = "The sequence window is checked against the installation sequence."
+        soft_note = "A soft window penalises positions outside the preferred bound."
     if constraint.enforcement == "hard":
         add(
             label,
             constraint.name,
-            f"{'>=' if earliest else '<='} {bound}",
+            target,
             "Violations: " + ", ".join(bad) if bad else "Respected",
             "Failed" if bad else "Passed",
             bad,
-            "The sequence window is checked against the installation sequence.",
+            hard_note,
         )
         return 0, set(bad), set(), set(), set()
     max_raw = max(vessel.max_foundations_per_trip, bound) * max(len(matched), 1)
@@ -587,11 +597,11 @@ def _window(constraint, included, placements, vessel, add, governing, penalties)
     add(
         f"Soft {label.lower()}",
         constraint.name,
-        f"{'>=' if earliest else '<='} {bound}",
+        target,
         f"shortfall={raw}; penalty={penalty}",
         "Soft trade-off" if penalty else "Passed",
         bad,
-        "A soft window penalises positions outside the preferred bound.",
+        soft_note,
     )
     return penalty, set(), set(), set(), set()
 

@@ -147,7 +147,7 @@ Each constraint is a database record with enforcement `hard` or `soft`. Soft con
 - Fixed vessel position
 - Allowed vessel positions by attribute
 - Excluded vessel positions by attribute
-- Earliest sequence position
+- Earliest trip
 - Latest sequence position
 - Precedence
 - Maximum matching foundations per trip

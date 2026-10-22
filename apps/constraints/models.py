@@ -50,3 +50,26 @@ class Constraint(models.Model):
     @property
     def type_label(self) -> str:
         return CONSTRAINT_TYPES.get(self.constraint_type, {}).get("label", self.constraint_type)
+
+    @property
+    def parameter_summary(self) -> str:
+        if self.constraint_type != "earliest_sequence":
+            return ""
+        parameters = self.parameters_json or {}
+        if parameters.get("attribute"):
+            parts = [str(parameters.get("attribute") or ""), str(parameters.get("operator") or "")]
+            value = parameters.get("value")
+            if value not in (None, ""):
+                if isinstance(value, list):
+                    value = ", ".join(str(item) for item in value)
+                parts.append(str(value))
+            subject = " ".join(part for part in parts if part)
+        else:
+            subject = str(parameters.get("foundation_id") or "")
+        if parameters.get("earliest_trip") not in (None, ""):
+            bound = f"earliest trip {parameters['earliest_trip']}"
+        elif parameters.get("earliest_sequence") not in (None, ""):
+            bound = f"earliest sequence {parameters['earliest_sequence']}"
+        else:
+            bound = ""
+        return ", ".join(part for part in (subject, bound) if part)
