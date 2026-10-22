@@ -20,7 +20,7 @@
           <td>{{ constraint.scope|default:"—" }}</td>
           <td>{{ constraint.name }}</td>
           <td>{{ constraint.description }}</td>
-          <td>{{ constraint.type_label }}</td>
+          <td>{{ constraint.type_label }}{% if constraint.parameter_summary %}<div class="small text-secondary">{{ constraint.parameter_summary }}</div>{% endif %}</td>
           <td><span class="badge {{ constraint.enforcement|badge_class }}">{{ constraint.enforcement }}</span></td>
           <td>{% if constraint.severity %}{{ constraint.severity }}{% else %}—{% endif %}</td>
           <td>{% if constraint.active %}<span class="badge text-bg-success">Active</span>{% else %}<span class="badge text-bg-secondary">Not active</span>{% endif %}</td>

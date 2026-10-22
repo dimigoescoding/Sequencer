@@ -167,6 +167,46 @@ def test_user_can_edit_constraint_level_add_a_constraint_and_set_solver_time(cli
     assert scenario.vessel_settings.solver_time_limit_seconds == 12
 
 
+def test_earliest_trip_page_saves_an_attribute_rule(client):
+    owner, project, scenario, _run = _owned_run()
+    from apps.scenarios.services.sync import sync_scenario_from_dataset
+
+    sync_scenario_from_dataset(scenario)
+    client.force_login(owner)
+    page = client.get(
+        reverse("constraints:create", args=[project.pk, scenario.pk, "earliest_sequence"])
+    )
+    assert page.status_code == 200
+    assert b"Earliest trip" in page.content
+    assert b"Enter 2 to keep them out of the first trip." in page.content
+    assert b"Shallow location" in page.content
+    added = client.post(
+        reverse("constraints:create", args=[project.pk, scenario.pk, "earliest_sequence"]),
+        {
+            "name": "No shallow first",
+            "description": "Keep shallow locations out of trip 1",
+            "enforcement": "hard",
+            "active": "on",
+            "selector": "attribute",
+            "foundation_id": "A",
+            "attribute": "Shallow location",
+            "operator": "equals",
+            "value": "YES",
+            "earliest_trip": "2",
+        },
+    )
+    assert added.status_code == 302
+    shallow = scenario.constraints.get(name="No shallow first")
+    assert shallow.parameters_json == {
+        "attribute": "Shallow location",
+        "operator": "equals",
+        "value": "YES",
+        "earliest_trip": 2,
+    }
+    listed = client.get(reverse("constraints:list", args=[project.pk, scenario.pk]))
+    assert b"Shallow location equals YES, earliest trip 2" in listed.content
+
+
 def test_user_can_create_a_second_project(client):
     owner = get_user_model().objects.create_user(username="builder", password="local-pass-123")
     client.force_login(owner)

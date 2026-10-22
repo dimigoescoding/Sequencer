@@ -4,6 +4,7 @@ import time
 from decimal import Decimal
 
 import pytest
+from apps.constraints.forms import ConstraintForm
 from apps.constraints.models import Constraint
 from apps.datasets.services.uploads import activate_dataset, create_dataset_version
 from apps.optimisation.services.evaluation import evaluate
@@ -348,6 +349,136 @@ def test_workbook_distance_finishes_and_shortens_each_trip():
             continue
         shortest = min(_path(parsed.foundations, list(perm)) for perm in permutations(group))
         assert _path(parsed.foundations, group) == shortest
+
+
+def test_earliest_trip_keeps_matching_locations_out_of_earlier_trips():
+    from apps.optimisation.services.within_trip import optimise_within_trip_routes
+
+    foundations = [
+        foundation("A", attributes={"Shallow location": False}),
+        foundation("B", attributes={"Shallow location": True}),
+        foundation("C", attributes={"Shallow location": False}),
+        foundation("D", attributes={"Shallow location": True}),
+    ]
+    limits = vessel(max_foundations_per_trip=2)
+    rules = [
+        constraint(
+            "No shallow first",
+            "earliest_sequence",
+            {
+                "attribute": "Shallow location",
+                "operator": "equals",
+                "value": "YES",
+                "earliest_trip": 2,
+            },
+        )
+    ]
+    status, _objective, _runtime, _message, order = solve_order(foundations, limits, rules)
+    assert status == "OPTIMAL"
+    assert set(order[:2]) == {"A", "C"}
+    assert set(order[2:]) == {"B", "D"}
+    assert evaluate(foundations, limits, rules, order).validation_status == "Passed"
+    assert evaluate(foundations, limits, rules, ["B", "A", "C", "D"]).validation_status == "Failed"
+    routed = optimise_within_trip_routes(
+        order,
+        foundations,
+        limits,
+        rules
+        + [
+            constraint(
+                "Distance",
+                "minimise_within_trip_distance",
+                {"include_harbour_legs": False},
+                enforcement="soft",
+                severity=50,
+            )
+        ],
+    )
+    assert set(routed[:2]) == {"A", "C"}
+
+
+def test_earliest_trip_keeps_one_location_out_of_the_first_trip():
+    foundations = [foundation("A"), foundation("B"), foundation("C"), foundation("D")]
+    limits = vessel(max_foundations_per_trip=2)
+    rules = [
+        constraint(
+            "D from trip 2",
+            "earliest_sequence",
+            {"foundation_id": "D", "earliest_trip": 2},
+        )
+    ]
+    status, _objective, _runtime, _message, order = solve_order(foundations, limits, rules)
+    assert status == "OPTIMAL"
+    assert order.index("D") >= 2
+    review = evaluate(foundations, limits, rules, order)
+    assert review.validation_status == "Passed"
+    assert any(
+        row.check_name == "Earliest trip" and row.target == "trip >= 2"
+        for row in review.validation_rows
+    )
+
+
+def test_earliest_trip_form_saves_the_attribute_and_ignores_a_location():
+    foundations = [
+        foundation("A", attributes={"Shallow location": True}),
+        foundation("B", attributes={"Shallow location": False}),
+    ]
+    form = ConstraintForm(
+        data={
+            "name": "No shallow first",
+            "description": "",
+            "enforcement": "hard",
+            "active": "on",
+            "selector": "attribute",
+            "foundation_id": "A",
+            "attribute": "Shallow location",
+            "operator": "equals",
+            "value": "YES",
+            "earliest_trip": "2",
+        },
+        constraint_type="earliest_sequence",
+        foundation_ids=["A", "B"],
+        columns=["Jacking difficulty", "Shallow location"],
+        foundations=foundations,
+        vessel=vessel(max_foundations_per_trip=4),
+        columns_present={"Jacking difficulty", "Shallow location"},
+    )
+    assert form.is_valid(), form.errors
+    assert form.cleaned_data["parameters"] == {
+        "attribute": "Shallow location",
+        "operator": "equals",
+        "value": "YES",
+        "earliest_trip": 2,
+    }
+    saved = Constraint(
+        name="No shallow first",
+        constraint_type="earliest_sequence",
+        enforcement="hard",
+        parameters_json=form.cleaned_data["parameters"],
+    )
+    assert saved.parameter_summary == "Shallow location equals YES, earliest trip 2"
+    assert "foundation_id" not in form.cleaned_data["parameters"]
+    location = ConstraintForm(
+        data={
+            "name": "D from trip 2",
+            "description": "",
+            "enforcement": "hard",
+            "selector": "foundation",
+            "foundation_id": "B",
+            "attribute": "Shallow location",
+            "operator": "equals",
+            "value": "YES",
+            "earliest_trip": "2",
+        },
+        constraint_type="earliest_sequence",
+        foundation_ids=["A", "B"],
+        columns=["Shallow location"],
+        foundations=foundations,
+        vessel=vessel(max_foundations_per_trip=4),
+        columns_present={"Shallow location"},
+    )
+    assert location.is_valid(), location.errors
+    assert location.cleaned_data["parameters"] == {"foundation_id": "B", "earliest_trip": 2}
 
 
 def _path(foundations, names: list[str]) -> int:

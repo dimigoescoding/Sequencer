@@ -37,8 +37,11 @@ CONSTRAINT_TYPES: dict[str, dict[str, str]] = {
         "summary": "Foundations that match the attribute rule must not use the selected positions.",
     },
     "earliest_sequence": {
-        "label": "Earliest sequence position",
-        "summary": "A foundation, or foundations matching a rule, cannot be installed before this point.",
+        "label": "Earliest trip",
+        "summary": (
+            "One location, or every location matching an attribute, is not installed before "
+            "this trip. Trip 2 keeps those locations out of the first trip."
+        ),
     },
     "latest_sequence": {
         "label": "Latest sequence position",

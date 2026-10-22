@@ -53,6 +53,8 @@ Named rules in this workbook:
 - Infield sailing orders the locations already assigned to each trip so the straight-line route inside that trip is as short as possible.
 - Jacking difficulty, when active, prefers to keep difficult locations out of the first three trips.
 
+Earliest trip is a constraint you can add. It applies to one location, or to every location matching an attribute. The number is the first trip those locations may be installed. Enter 2 to keep them out of the first trip. For a Yes/No column such as Shallow location, use equals and YES.
+
 ## Hard versus soft constraints
 
 Hard constraints are part of the CP-SAT model. If they cannot all be met, the run is `INFEASIBLE` and there is no sequence. Sequencer will not drop or soften them for you.
