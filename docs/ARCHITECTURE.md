@@ -22,7 +22,7 @@ Views load an owned object, call a service, and render a template. They do not b
 
 1. The user uploads an `.xlsx` file with `Information`, `Constraints`, and `Settings` sheets. `create_dataset_version` stores the original bytes, parses those sheets, and writes foundation, constraint, setting, and issue rows. The version is immutable. Formula text is not calculated. A value Excel has already stored is read.
 2. A version with no critical errors can be activated. A scenario points at one dataset version. Creating or retargeting the scenario copies the workbook constraints and settings onto the scenario.
-3. The user can activate or deactivate a copied constraint and can change a setting value. The user cannot add a constraint or a setting. Parameters are checked by `validate_parameters`. Nothing in that path uses `eval`.
+3. The user can change a copied constraint between hard and soft, set its severity, activate or deactivate it, delete it, and add a constraint from the supported library. Workbook setting values can be changed. Solver time is selected on the settings page, from 1 to 30 seconds. Parameters are checked by `validate_parameters`. Nothing in that path uses `eval`.
 4. Generate Sequence calls `blocking_messages`. Dataset errors and direct conflicts stop the solver.
 5. `solve_order` builds the CP-SAT model and returns a status plus, only for `OPTIMAL` or `FEASIBLE`, an ordered list of foundation IDs.
 6. `evaluate` derives trip and vessel position from that order and checks every active hard constraint again. Soft metrics become penalties and trade-offs.

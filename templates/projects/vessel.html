@@ -11,7 +11,7 @@
     {% for scenario in scenarios %}
       <a class="list-group-item list-group-item-action" href="{% url 'scenarios:settings' project.pk scenario.pk %}">
         <strong>{{ scenario.name }}</strong>
-        <div class="small text-secondary">MP per trip {{ scenario.vessel_settings.max_foundations_per_trip }}</div>
+        <div class="small text-secondary">MP per trip {{ scenario.vessel_settings.max_foundations_per_trip }} · solver {{ scenario.vessel_settings.solver_time_limit_seconds }} seconds</div>
       </a>
     {% endfor %}
   </div>

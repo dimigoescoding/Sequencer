@@ -130,7 +130,7 @@ python manage.py check --deploy
 
 Download `Sequencer_input_template.xlsx` from a project's Foundation Data page. The workbook needs three sheets: `Information`, `Constraints`, and `Settings`.
 
-`Information` holds one row per location. Required columns are WTG ID, average weight, Easting, Northing, Spider location, Shallow location, and Jacking difficulty. `Constraints` holds the rules the scenario can activate or deactivate. `Settings` holds values such as `MP per trip`, which can be edited and cannot be extended with a new setting.
+`Information` holds one row per location. Required columns are WTG ID, average weight, Easting, Northing, Spider location, Shallow location, and Jacking difficulty. `Constraints` holds the starting rules. On a scenario you can change hard or soft and the severity, and you can add another constraint from the supported list. `Settings` holds values such as `MP per trip`. Solver time, from 1 to 30 seconds, is chosen on the scenario settings page.
 
 WTG ID must be unique. Spider location and Shallow location accept Yes/No. Weight must be positive. Macro-enabled workbooks are rejected. Formula text is not calculated. If Excel has stored a calculated value, that stored value is used.
 
@@ -140,7 +140,7 @@ Uploads are limited to `.xlsx` files of at most 2 MB.
 
 ## Supported constraint types
 
-Each constraint is a database record with enforcement `hard` or `soft`. Soft constraints require a severity from 1 to 100. Hard constraints do not use severity and are never converted to soft.
+Each constraint is a database record with enforcement `hard` or `soft`. Soft constraints require a severity from 1 to 100. Hard constraints do not use severity. You can change that choice on the constraint. The solver does not make the change for you.
 
 - Maximum trip payload
 - Fixed trip
@@ -158,6 +158,8 @@ Each constraint is a database record with enforcement `hard` or `soft`. Soft con
 - Delivery-sequence alignment
 - Difficulty progression
 - Minimise within-trip distance
+- Matching locations first
+- Avoid matches in the first trips
 
 Attribute rules use a fixed operator list (`equals`, `does_not_equal`, `greater_than`, `greater_than_or_equal`, `less_than`, `less_than_or_equal`, `between`, `in_list`, `not_in_list`, `is_blank`, `is_not_blank`) against columns in the uploaded dataset. The rule builder does not accept free-text logic or code.
 

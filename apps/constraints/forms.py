@@ -98,6 +98,8 @@ class ConstraintForm(forms.Form):
             "latest_sequence",
             "attribute_ordering",
             "difficulty_progression",
+            "matching_installed_first",
+            "avoid_matching_in_first_trips",
         }:
             choices = (
                 numeric_choices
@@ -144,6 +146,12 @@ class ConstraintForm(forms.Form):
             self.fields["applicable_trips"] = forms.CharField(
                 required=False,
                 help_text="Optional trip numbers, separated by commas. Leave blank to apply the rule to every trip.",
+            )
+        if kind == "avoid_matching_in_first_trips":
+            self.fields["trip_count"] = forms.IntegerField(
+                min_value=1,
+                initial=1,
+                help_text="Matching locations are kept out of this many trips at the start of the sequence.",
             )
         if kind in {"same_trip", "separate_trip"}:
             self.fields["foundation_ids"] = forms.MultipleChoiceField(
@@ -286,6 +294,11 @@ class ConstraintForm(forms.Form):
             if cleaned.get("harbour_northing_m") is not None:
                 parameters["harbour_northing_m"] = format(cleaned["harbour_northing_m"], "f")
             return parameters
+        if kind in {"matching_installed_first", "avoid_matching_in_first_trips"}:
+            parameters = self._rule(cleaned)
+            if kind == "avoid_matching_in_first_trips":
+                parameters["trip_count"] = cleaned["trip_count"]
+            return parameters
         raise forms.ValidationError("This constraint type is not supported.")
 
     def _rule(self, cleaned: dict) -> dict:
@@ -313,6 +326,35 @@ class ConstraintForm(forms.Form):
             raise forms.ValidationError("Enter a literal comparison value.")
         parameters["value"] = cleaned["value"].strip()
         return parameters
+
+
+class ConstraintLevelForm(forms.Form):
+    """Change hard or soft, and the severity, without rewriting the rule parameters."""
+
+    enforcement = forms.ChoiceField(
+        label="Type",
+        choices=[("hard", "Hard"), ("soft", "Soft")],
+    )
+    severity = forms.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=100,
+        help_text="Required for a soft constraint, from 1 to 100. A hard constraint does not use a severity.",
+    )
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        apply_bootstrap(self)
+
+    def clean(self):
+        cleaned = super().clean()
+        if self.errors:
+            return cleaned
+        if cleaned.get("enforcement") == "soft" and cleaned.get("severity") is None:
+            self.add_error("severity", "Soft constraints require a severity from 1 to 100.")
+        if cleaned.get("enforcement") == "hard":
+            cleaned["severity"] = None
+        return cleaned
 
 
 def _split_ints(value: str) -> list[int]:
@@ -354,6 +396,7 @@ def _initial_parameters(constraint_type: str, parameters: dict) -> dict:
         "harbour_northing_m",
         "predecessor_foundation_id",
         "successor_foundation_id",
+        "trip_count",
     ):
         if parameters.get(key) not in (None, ""):
             initial[key] = parameters[key]

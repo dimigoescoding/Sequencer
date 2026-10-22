@@ -1,8 +1,9 @@
 """Copy workbook constraints and settings onto a scenario.
 
-The dataset version stays unchanged. Activate and deactivate, and edited
-setting values, live on the scenario. Choosing a different dataset version
-loads that version's rows again.
+The dataset version stays unchanged. Type, severity, active state, added
+constraints, and edited setting values live on the scenario. Choosing a
+different dataset version loads that version's constraint and setting rows
+again. Solver time is kept.
 """
 
 from __future__ import annotations

@@ -59,7 +59,7 @@ class VesselSettingsForm(forms.ModelForm):
 
 
 class WorkbookSettingsForm(forms.Form):
-    """Edit the values of settings that arrived in the workbook."""
+    """Edit workbook setting values and the solver time limit."""
 
     def __init__(self, definitions: list[tuple[str, str]], *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -70,6 +70,12 @@ class WorkbookSettingsForm(forms.Form):
                 initial=value,
                 help_text="Loaded from the workbook. You can change this value.",
             )
+        self.fields["solver_time_limit_seconds"] = forms.IntegerField(
+            min_value=1,
+            max_value=30,
+            label="Solver time (seconds)",
+            help_text="How long the solver may run, from 1 to 30 seconds. A result that stops at this limit is feasible unless OR-Tools proves it optimal.",
+        )
         apply_bootstrap(self)
 
     def clean(self):

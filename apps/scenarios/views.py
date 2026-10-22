@@ -110,14 +110,20 @@ def vessel_settings(request, project_id: int, scenario_id: int):
         definitions = [
             (item.name, stored.get(item.name, item.value)) for item in dataset.setting_rows.all()
         ]
-    form = WorkbookSettingsForm(definitions, request.POST or None)
-    if request.method == "POST" and definitions and form.is_valid():
-        values = form.value_map()
+    form = WorkbookSettingsForm(
+        definitions,
+        request.POST or None,
+        initial={"solver_time_limit_seconds": scenario.vessel_settings.solver_time_limit_seconds},
+    )
+    if request.method == "POST" and form.is_valid():
         settings = scenario.vessel_settings
-        settings.workbook_values = values
-        for name, raw in values.items():
-            if setting_key(name) == "mp_per_trip":
-                settings.max_foundations_per_trip = int(Decimal(raw))
+        if definitions:
+            values = form.value_map()
+            settings.workbook_values = values
+            for name, raw in values.items():
+                if setting_key(name) == "mp_per_trip":
+                    settings.max_foundations_per_trip = int(Decimal(raw))
+        settings.solver_time_limit_seconds = form.cleaned_data["solver_time_limit_seconds"]
         settings.save()
         messages.success(request, "Settings saved.")
         return redirect(scenario)
