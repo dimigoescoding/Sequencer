@@ -4,7 +4,7 @@
 {% include "partials/project_nav.html" with nav="scenarios" %}
 {% include "partials/scenario_nav.html" with snav="constraints" %}
 <h1 class="h3">Add a constraint</h1>
-<p>Choose a supported type. Rules use the fields below. Free-text logic is not accepted and is never executed.</p>
+<p>Choose a supported type. Rules use the fields on the next page. Free-text logic is not accepted and is never executed.</p>
 {% if not has_dataset %}<div class="alert alert-warning">Select a valid dataset on the scenario before adding constraints.</div>{% endif %}
 {% if punch_message %}<div class="alert alert-secondary">{{ punch_message }}</div>{% endif %}
 <div class="list-group">

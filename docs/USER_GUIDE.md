@@ -36,15 +36,15 @@ A project can hold several scenarios on the same dataset. Example names such as 
 
 ## Settings
 
-Each scenario shows the settings from the workbook. `MP per trip` is the only setting in the supplied file. You can change its value. You cannot add another setting. The number of trips is the included location count divided by `MP per trip`, rounded up. The final trip may be shorter than that capacity.
+Each scenario shows the settings from the workbook. `MP per trip` is the only setting in the supplied file. You can change its value. The number of trips is the included location count divided by `MP per trip`, rounded up. The final trip may be shorter than that capacity.
 
-The solver time limit stays at 20 seconds and is capped at 30. It is not a workbook setting.
+Solver time is on the same settings page. Choose 1 to 30 seconds. The stored default is 20. A run that stops at that limit is feasible unless OR-Tools proves it optimal.
 
 ## Constraints
 
-Open the scenario, then Constraints. The rows are the Constraints sheet: package, name, explanation, hard or soft, severity, and status. Activate or deactivate a row. You cannot add, rename, delete, or rewrite a constraint. The explanation is shown as text. Sequencer does not read it as a new rule.
+Open the scenario, then Constraints. The rows start from the Constraints sheet: package, name, explanation, rule, hard or soft, severity, and status. Edit a row to change hard or soft and the severity. Activate or deactivate a row, or delete it from the scenario. Add constraint offers the supported rule list. The explanation is shown as text. Sequencer does not read it as a new rule.
 
-A soft severity of 0.5 in the workbook is half of the internal 1–100 scale, so the solver uses 50. Hard rows show `NA`.
+A soft severity of 0.5 in the workbook is half of the internal 1–100 scale, so the solver starts at 50. You can replace that number with any severity from 1 to 100. Changing a row to hard clears its severity.
 
 Named rules in this workbook:
 

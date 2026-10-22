@@ -66,7 +66,7 @@ The objective is the sum of these scaled terms, plus the primary distance weight
 
 CP-SAT minimises the sum. `num_search_workers` is 1 and `random_seed` is 1 (`SOLVER_SEED`), so repeated runs with the same data and settings follow the same search. A change to settings, constraints, or the time limit can change a feasible-but-not-optimal result.
 
-The time limit is the scenario's `solver_time_limit_seconds`.
+The time limit is the scenario's `solver_time_limit_seconds`, chosen on the settings page from 1 to 30 seconds.
 
 ## Feasible versus optimal status
 

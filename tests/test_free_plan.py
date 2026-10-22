@@ -33,13 +33,24 @@ def test_database_storage_round_trip():
     assert storage.exists(name) is False
 
 
-def test_settings_form_only_edits_workbook_values():
-    form = WorkbookSettingsForm([("MP per trip", "4")], data={"value_0": "6"})
+def test_settings_form_edits_workbook_values_and_solver_time():
+    form = WorkbookSettingsForm(
+        [("MP per trip", "4")],
+        data={"value_0": "6", "solver_time_limit_seconds": "15"},
+    )
     assert form.is_valid() is True
     assert form.value_map() == {"MP per trip": "6"}
-    assert "solver_time_limit_seconds" not in form.fields
-    rejected = WorkbookSettingsForm([("MP per trip", "4")], data={"value_0": "60"})
+    assert form.cleaned_data["solver_time_limit_seconds"] == 15
+    rejected = WorkbookSettingsForm(
+        [("MP per trip", "4")],
+        data={"value_0": "60", "solver_time_limit_seconds": "15"},
+    )
     assert rejected.is_valid() is False
+    too_long = WorkbookSettingsForm(
+        [("MP per trip", "4")],
+        data={"value_0": "4", "solver_time_limit_seconds": "31"},
+    )
+    assert too_long.is_valid() is False
     assert MAX_SOLVER_TIME_LIMIT_SECONDS == 30
     assert 50 <= MAX_INCLUDED_FOUNDATIONS <= 60
     assert 50 <= MAX_DISTANCE_FOUNDATIONS <= 60

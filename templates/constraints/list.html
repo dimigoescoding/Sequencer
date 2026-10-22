@@ -4,25 +4,33 @@
 {% block content %}
 {% include "partials/project_nav.html" with nav="scenarios" %}
 {% include "partials/scenario_nav.html" with snav="constraints" %}
-<h1 class="h3">Constraints</h1>
-<p class="text-secondary">These rows come from the Constraints sheet. You can activate or deactivate them. The application does not add, edit, or interpret new constraints.</p>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h3 mb-0">Constraints</h1>
+  <a class="btn btn-primary" href="{% url 'constraints:choose' project.pk scenario.pk %}">Add constraint</a>
+</div>
+<p class="text-secondary">Workbook rows are listed here. Change hard or soft and the severity on each row, or add another constraint from the supported list. Explanation text is shown and is not turned into a rule.</p>
 {% if not constraints %}
-  <div class="card"><div class="card-body empty-state">This workbook did not include any constraints. Upload a workbook with a Constraints sheet.</div></div>
+  <div class="card"><div class="card-body empty-state">No constraints yet. Add one, or upload a workbook with a Constraints sheet.</div></div>
 {% else %}
   <div class="table-responsive card"><table class="table table-sm align-middle mb-0">
-    <thead><tr><th>Package</th><th>Name</th><th>Explanation</th><th>Type</th><th>Severity</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Package</th><th>Name</th><th>Explanation</th><th>Rule</th><th>Type</th><th>Severity</th><th>Status</th><th></th></tr></thead>
     <tbody>
       {% for constraint in constraints %}
         <tr>
           <td>{{ constraint.scope|default:"—" }}</td>
           <td>{{ constraint.name }}</td>
           <td>{{ constraint.description }}</td>
+          <td>{{ constraint.type_label }}</td>
           <td><span class="badge {{ constraint.enforcement|badge_class }}">{{ constraint.enforcement }}</span></td>
-          <td>{{ constraint.parameters_json.reported_severity|default:"—" }}</td>
+          <td>{% if constraint.severity %}{{ constraint.severity }}{% else %}—{% endif %}</td>
           <td>{% if constraint.active %}<span class="badge text-bg-success">Active</span>{% else %}<span class="badge text-bg-secondary">Not active</span>{% endif %}</td>
-          <td class="text-end">
-            <form method="post" action="{% url 'constraints:toggle' project.pk scenario.pk constraint.pk %}">{% csrf_token %}
+          <td class="text-end text-nowrap">
+            <a class="btn btn-sm btn-outline-primary" href="{% url 'constraints:edit' project.pk scenario.pk constraint.pk %}">Edit</a>
+            <form method="post" action="{% url 'constraints:toggle' project.pk scenario.pk constraint.pk %}" class="d-inline">{% csrf_token %}
               <button class="btn btn-sm btn-outline-secondary" type="submit">{% if constraint.active %}Deactivate{% else %}Activate{% endif %}</button>
+            </form>
+            <form method="post" action="{% url 'constraints:delete' project.pk scenario.pk constraint.pk %}" class="d-inline" data-confirm="Delete this constraint?">{% csrf_token %}
+              <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
             </form>
           </td>
         </tr>
