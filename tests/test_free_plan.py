@@ -41,6 +41,11 @@ def test_settings_form_edits_workbook_values_and_solver_time():
     assert form.is_valid() is True
     assert form.value_map() == {"MP per trip": "6"}
     assert form.cleaned_data["solver_time_limit_seconds"] == 15
+    accepted = WorkbookSettingsForm(
+        [("MP per trip", "4")],
+        data={"value_0": "4", "solver_time_limit_seconds": "600"},
+    )
+    assert accepted.is_valid() is True
     rejected = WorkbookSettingsForm(
         [("MP per trip", "4")],
         data={"value_0": "60", "solver_time_limit_seconds": "15"},
@@ -48,10 +53,10 @@ def test_settings_form_edits_workbook_values_and_solver_time():
     assert rejected.is_valid() is False
     too_long = WorkbookSettingsForm(
         [("MP per trip", "4")],
-        data={"value_0": "4", "solver_time_limit_seconds": "31"},
+        data={"value_0": "4", "solver_time_limit_seconds": "601"},
     )
     assert too_long.is_valid() is False
-    assert MAX_SOLVER_TIME_LIMIT_SECONDS == 30
+    assert MAX_SOLVER_TIME_LIMIT_SECONDS == 600
     assert 50 <= MAX_INCLUDED_FOUNDATIONS <= 60
     assert 50 <= MAX_DISTANCE_FOUNDATIONS <= 60
 

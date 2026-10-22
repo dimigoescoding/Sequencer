@@ -65,8 +65,8 @@ class VesselSettings(models.Model):
                 name="solver_time_limit_at_least_one",
             ),
             models.CheckConstraint(
-                condition=models.Q(solver_time_limit_seconds__lte=30),
-                name="solver_time_limit_at_most_30",
+                condition=models.Q(solver_time_limit_seconds__lte=600),
+                name="solver_time_limit_at_most_600",
             ),
         ]
 

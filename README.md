@@ -130,7 +130,7 @@ python manage.py check --deploy
 
 Download `Sequencer_input_template.xlsx` from a project's Foundation Data page. The workbook needs three sheets: `Information`, `Constraints`, and `Settings`.
 
-`Information` holds one row per location. Required columns are WTG ID, average weight, Easting, Northing, Spider location, Shallow location, and Jacking difficulty. `Constraints` holds the starting rules. On a scenario you can change hard or soft and the severity, and you can add another constraint from the supported list. `Settings` holds values such as `MP per trip`. Solver time, from 1 to 30 seconds, is chosen on the scenario settings page.
+`Information` holds one row per location. Required columns are WTG ID, average weight, Easting, Northing, Spider location, Shallow location, and Jacking difficulty. `Constraints` holds the starting rules. On a scenario you can change hard or soft and the severity, and you can add another constraint from the supported list. `Settings` holds values such as `MP per trip`. Solver time, from 1 to 600 seconds, is chosen on the scenario settings page.
 
 WTG ID must be unique. Spider location and Shallow location accept Yes/No. Weight must be positive. Macro-enabled workbooks are rejected. Formula text is not calculated. If Excel has stored a calculated value, that stored value is used.
 
@@ -182,7 +182,7 @@ Free web service limits that this configuration respects:
 - 512 MB RAM and 0.1 CPU. Gunicorn runs one worker and two threads, so a health check can still be served during a solve. A second solve is refused until the first finishes.
 - No persistent disk, and no shell. Local files disappear when the service sleeps, restarts, or redeploys. Original workbooks are stored in Postgres through Django's storage API. Exports are built from database rows.
 - The service sleeps after 15 minutes without a request and takes about a minute to wake. Sleeping does not consume the 750 Free instance hours granted per workspace each month.
-- The solver time limit is 1–30 seconds so a request can finish on this CPU. A result found before a proof is `FEASIBLE`, not `OPTIMAL`.
+- The solver time limit is 1–600 seconds. Gunicorn waits up to 660 seconds so that run can finish. A result found before a proof is `FEASIBLE`, not `OPTIMAL`.
 - At most 60 included foundations per solve, including within-trip distance. Larger models are rejected before CP-SAT starts.
 - Workbooks are limited to 2 MB so a few uploads cannot fill the 1 GB database.
 
@@ -205,7 +205,7 @@ Do not add a second Free web service in the same workspace if you want the full 
 - No dates, weather, cost, maps, Gantt charts, or PDF reports.
 - No user registration or email verification.
 - At most 60 included foundations per solve, including within-trip distance.
-- Solver time is limited to 1–30 seconds. A feasible result inside the limit is labelled `FEASIBLE`, not `OPTIMAL`, unless OR-Tools proves optimality.
+- Solver time is limited to 1–600 seconds. A feasible result inside the limit is labelled `FEASIBLE`, not `OPTIMAL`, unless OR-Tools proves optimality.
 - The hosted database on the Free plan expires 30 days after creation. Upgrade it before the grace period ends if the data should be kept.
 - A hard "minimise distance" constraint has no numeric distance cap. It is a primary objective term. The validator reports it as information, not a pass/fail limit.
 - A soft payload limit can return an overloaded trip. The interface warns about that, and the excess is a soft trade-off.

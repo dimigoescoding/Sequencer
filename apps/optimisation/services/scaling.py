@@ -25,7 +25,8 @@ SOLVER_SEED = 1
 # The supplied workbook has 50 locations and an active within-trip distance rule.
 MAX_INCLUDED_FOUNDATIONS = 60
 MAX_DISTANCE_FOUNDATIONS = 60
-MAX_SOLVER_TIME_LIMIT_SECONDS = 30
+# The generate request stays open until the solver stops, so Gunicorn's timeout is longer than this.
+MAX_SOLVER_TIME_LIMIT_SECONDS = 600
 
 
 def scaled_penalty(raw: int, max_raw: int, severity: int) -> int:

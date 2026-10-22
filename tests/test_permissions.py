@@ -160,7 +160,7 @@ def test_user_can_edit_constraint_level_add_a_constraint_and_set_solver_time(cli
     assert scenario.vessel_settings.solver_time_limit_seconds == 12
     rejected = client.post(
         reverse("scenarios:settings", args=[project.pk, scenario.pk]),
-        {"value_0": "5", "solver_time_limit_seconds": "45"},
+        {"value_0": "5", "solver_time_limit_seconds": "601"},
     )
     assert rejected.status_code == 200
     scenario.vessel_settings.refresh_from_db()
