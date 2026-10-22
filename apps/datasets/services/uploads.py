@@ -9,7 +9,13 @@ from pathlib import Path
 from django.core.files.base import ContentFile
 from django.db import transaction
 
-from apps.datasets.models import DatasetIssue, DatasetVersion, Foundation
+from apps.datasets.models import (
+    DatasetConstraint,
+    DatasetIssue,
+    DatasetSetting,
+    DatasetVersion,
+    Foundation,
+)
 from apps.datasets.services.parsing import UploadRejected, parse_workbook
 from apps.projects.models import Project
 
@@ -68,6 +74,7 @@ def create_dataset_version(
                     earliest_sequence=item.earliest_sequence,
                     latest_sequence=item.latest_sequence,
                     notes=item.notes,
+                    attributes=item.attributes,
                 )
                 for item, source_row in zip(
                     parsed.foundations,
@@ -87,6 +94,37 @@ def create_dataset_version(
                     column_name=issue.column_name,
                 )
                 for issue in parsed.issues
+            ]
+        )
+        DatasetConstraint.objects.bulk_create(
+            [
+                DatasetConstraint(
+                    dataset_version=version,
+                    package=item.package,
+                    name=item.name,
+                    explanation=item.explanation,
+                    enforcement=item.enforcement,
+                    severity=item.severity,
+                    reported_severity=item.reported_severity,
+                    active=item.active,
+                    constraint_type=item.constraint_type,
+                    parameters_json=item.parameters,
+                    source_row=item.source_row,
+                    display_order=index,
+                )
+                for index, item in enumerate(parsed.constraints, start=1)
+            ]
+        )
+        DatasetSetting.objects.bulk_create(
+            [
+                DatasetSetting(
+                    dataset_version=version,
+                    name=item.name,
+                    key=item.key,
+                    value=item.value,
+                    source_row=item.source_row,
+                )
+                for item in parsed.settings
             ]
         )
     return version

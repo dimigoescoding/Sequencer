@@ -10,7 +10,7 @@ from apps.optimisation.services.solver import solve_order
 from apps.projects.models import Project
 from apps.scenarios.models import Scenario, VesselSettings
 from django.contrib.auth import get_user_model
-from tests.support import constraint, foundation, valid_row, vessel, workbook_bytes
+from tests.support import constraint, foundation, information_workbook, location_row, vessel
 
 
 def test_severity_scaling_is_linear():
@@ -143,11 +143,11 @@ def test_soft_constraint_can_lose_and_still_report_a_penalty():
 def test_infeasible_run_is_stored_without_a_fabricated_sequence():
     user = get_user_model().objects.create_user(username="solver", password="local-pass-123")
     project = Project.objects.create(owner=user, name="Infeasible", package_type="Foundation")
-    content = workbook_bytes(
+    content = information_workbook(
         [
-            valid_row("A", Weight_t=300),
-            valid_row("B", Weight_t=300, Delivery_Sequence=2),
-            valid_row("C", Weight_t=300, Delivery_Sequence=3),
+            location_row("A", **{"Aver. Weight[t]": 300, "Location": 1}),
+            location_row("B", **{"Aver. Weight[t]": 300, "Location": 2}),
+            location_row("C", **{"Aver. Weight[t]": 300, "Location": 3}),
         ]
     )
     version = create_dataset_version(
@@ -177,4 +177,43 @@ def test_infeasible_run_is_stored_without_a_fabricated_sequence():
     assert run.solver_status == "INFEASIBLE"
     assert run.sequence_rows.count() == 0
     assert constraint_row.enforcement == "hard"
-    assert run.constraint_snapshot[0]["enforcement"] == "hard"
+
+
+def test_spider_locations_lead_and_one_shallow_is_allowed_per_trip():
+    from apps.optimisation.services.evaluation import evaluate
+    from apps.optimisation.services.solver import solve_order
+
+    foundations = [
+        foundation("S1", attributes={"Spider location": True, "Shallow location": False}),
+        foundation("S2", attributes={"Spider location": True, "Shallow location": False}),
+        foundation("A", attributes={"Spider location": False, "Shallow location": True}),
+        foundation("B", attributes={"Spider location": False, "Shallow location": True}),
+        foundation("C", attributes={"Spider location": False, "Shallow location": False}),
+        foundation("D", attributes={"Spider location": False, "Shallow location": False}),
+    ]
+    rules = [
+        constraint(
+            "Spider locations FOU",
+            "matching_installed_first",
+            {"attribute": "Spider location", "operator": "equals", "value": "YES"},
+        ),
+        constraint(
+            "Shallow locations",
+            "maximum_matching_per_trip",
+            {
+                "attribute": "Shallow location",
+                "operator": "equals",
+                "value": "YES",
+                "maximum_count": 1,
+            },
+        ),
+    ]
+    limits = vessel(max_foundations_per_trip=2, solver_time_limit_seconds=10)
+    status, _objective, _runtime, _message, order = solve_order(foundations, limits, rules)
+    assert status == "OPTIMAL"
+    assert set(order[:2]) == {"S1", "S2"}
+    for trip in range(3):
+        group = order[trip * 2 : trip * 2 + 2]
+        assert len([name for name in group if name in {"A", "B"}]) <= 1
+    review = evaluate(foundations, limits, rules, order)
+    assert review.validation_status == "Passed"

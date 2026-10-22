@@ -29,6 +29,7 @@ class FoundationInput:
     earliest_sequence: int | None = None
     latest_sequence: int | None = None
     notes: str = ""
+    attributes: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

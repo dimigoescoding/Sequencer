@@ -350,6 +350,10 @@ def _check_constraint(
         return _difficulty(constraint, included, placements, vessel, add, governing, penalties)
     if kind == "minimise_within_trip_distance":
         return _distance(constraint, placements, vessel, add, governing)
+    if kind == "matching_installed_first":
+        return _installed_first(constraint, placements, add, governing, penalties)
+    if kind == "avoid_matching_in_first_trips":
+        return _avoid_first_trips(constraint, placements, vessel, add, governing, penalties)
     add(
         constraint.constraint_type,
         constraint.name,
@@ -911,6 +915,97 @@ def _delivery(constraint, included, placements, add, governing, penalties):
         "Soft trade-off" if penalty else "Passed",
         affected,
         "Deviation outside the tolerance is penalised by severity. It is not a hard failure.",
+    )
+    return penalty, set(), set(), set(), set()
+
+
+def _installed_first(constraint, placements, add, governing, penalties):
+    matched = matching_foundations([item.foundation for item in placements], constraint.parameters)
+    matched_ids = {item.foundation_id for item in matched}
+    _mark(governing, sorted(matched_ids), constraint.name)
+    count = len(matched_ids)
+    late = [
+        item
+        for item in placements
+        if item.foundation.foundation_id in matched_ids and item.sequence > count
+    ]
+    affected = [item.foundation.foundation_id for item in late]
+    if count == 0:
+        add(
+            "Matching locations first",
+            constraint.name,
+            "No matching locations",
+            "Nothing to place first",
+            "Passed",
+            [],
+            "The rule does not change the sequence when no location matches.",
+        )
+        return _empty()
+    if constraint.enforcement == "hard":
+        add(
+            "Matching locations first",
+            constraint.name,
+            f"Matching locations in positions 1 to {count}, in any order",
+            "Respected" if not late else "Late: " + ", ".join(affected),
+            "Passed" if not late else "Failed",
+            affected,
+            "Matching locations fill the first positions. Their order inside that block is free.",
+        )
+        return 0, set(affected), set(), set(), set()
+    raw = sum(item.sequence - count for item in late)
+    max_raw = max(count * len(placements), 1)
+    penalty = scaled_penalty(raw, max_raw, constraint.severity or 0) if raw else 0
+    for foundation_id in affected:
+        penalties[foundation_id] += penalty
+    add(
+        "Soft matching locations first",
+        constraint.name,
+        f"Prefer matches in positions 1 to {count}",
+        f"late={len(late)}; penalty={penalty}",
+        "Soft trade-off" if penalty else "Passed",
+        affected,
+        "A matching location after the first block produces a soft penalty.",
+    )
+    return penalty, set(), set(), set(), set()
+
+
+def _avoid_first_trips(constraint, placements, vessel, add, governing, penalties):
+    matched = matching_foundations([item.foundation for item in placements], constraint.parameters)
+    matched_ids = {item.foundation_id for item in matched}
+    _mark(governing, sorted(matched_ids), constraint.name)
+    trip_count = int(constraint.parameters["trip_count"])
+    earliest = trip_count * vessel.max_foundations_per_trip + 1
+    early = [
+        item
+        for item in placements
+        if item.foundation.foundation_id in matched_ids and item.sequence < earliest
+    ]
+    affected = [item.foundation.foundation_id for item in early]
+    target = f"Matching locations at sequence {earliest} or later (after trip {trip_count})"
+    if constraint.enforcement == "hard":
+        add(
+            "Avoid matches in the first trips",
+            constraint.name,
+            target,
+            "Respected" if not early else "Early: " + ", ".join(affected),
+            "Passed" if not early else "Failed",
+            affected,
+            "Matching locations are not installed during the opening trips.",
+        )
+        return 0, set(affected), set(), set(), set()
+    raw = sum(earliest - item.sequence for item in early)
+    max_raw = max((earliest - 1) * max(len(matched_ids), 1), 1)
+    penalty = scaled_penalty(raw, max_raw, constraint.severity or 0) if raw else 0
+    for foundation_id in affected:
+        penalties[foundation_id] += penalty
+    add(
+        "Soft avoid matches in the first trips",
+        constraint.name,
+        target,
+        f"early={len(early)}; penalty={penalty}",
+        "Soft trade-off" if penalty else "Passed",
+        affected,
+        "A matching location in the opening trips produces a soft penalty. It is not a hard failure.",
     )
     return penalty, set(), set(), set(), set()
 

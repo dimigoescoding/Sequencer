@@ -8,7 +8,7 @@ from apps.projects.models import Project
 from apps.scenarios.models import Scenario, VesselSettings
 from django.contrib.auth import get_user_model
 from django.urls import reverse
-from tests.support import valid_row, workbook_bytes
+from tests.support import information_workbook, location_row
 
 pytestmark = pytest.mark.django_db
 
@@ -20,7 +20,7 @@ def _owned_run():
         project=project,
         user=owner,
         filename="private.xlsx",
-        content=workbook_bytes([valid_row("A"), valid_row("B", Delivery_Sequence=2)]),
+        content=information_workbook([location_row("A"), location_row("B", Location=2)]),
     )
     activate_dataset(version)
     scenario = Scenario.objects.create(
@@ -65,7 +65,6 @@ def test_owner_can_log_in_and_open_the_project(client):
         reverse("scenarios:detail", args=[project.pk, scenario.pk]),
         reverse("scenarios:settings", args=[project.pk, scenario.pk]),
         reverse("constraints:list", args=[project.pk, scenario.pk]),
-        reverse("constraints:choose", args=[project.pk, scenario.pk]),
         reverse("scenarios:generate", args=[project.pk, scenario.pk]),
         reverse("optimisation:detail", args=[run.pk]),
         reverse("optimisation:export", args=[run.pk]),
@@ -76,56 +75,37 @@ def test_owner_can_log_in_and_open_the_project(client):
     assert owner.username == "owner"
 
 
-def test_user_can_add_edit_and_remove_a_soft_constraint(client):
+def test_user_can_only_activate_or_deactivate_workbook_constraints(client):
     owner, project, scenario, _run = _owned_run()
+    from apps.scenarios.services.sync import sync_scenario_from_dataset
+
+    sync_scenario_from_dataset(scenario)
     client.force_login(owner)
-    create_url = reverse(
-        "constraints:create",
-        args=[project.pk, scenario.pk, "delivery_sequence_alignment"],
-    )
-    created = client.post(
-        create_url,
-        {
-            "name": "Stay near delivery",
-            "description": "User-entered preference.",
-            "enforcement": "soft",
-            "severity": "80",
-            "active": "on",
-            "tolerance_positions": "1",
-        },
-    )
-    assert created.status_code == 302
-    row = scenario.constraints.get(name="Stay near delivery")
-    assert row.enforcement == "soft"
-    assert row.severity == 80
-    edited = client.post(
-        reverse("constraints:edit", args=[project.pk, scenario.pk, row.pk]),
-        {
-            "name": "Stay near delivery",
-            "description": "Now mandatory.",
-            "enforcement": "hard",
-            "severity": "80",
-            "active": "on",
-            "tolerance_positions": "1",
-        },
-    )
-    assert edited.status_code == 302
-    row.refresh_from_db()
-    assert row.enforcement == "hard"
-    assert row.severity is None
-    duplicated = client.post(
-        reverse("constraints:duplicate", args=[project.pk, scenario.pk, row.pk])
-    )
-    assert duplicated.status_code == 302
-    copy = scenario.constraints.get(name="Stay near delivery (copy)")
-    assert copy.enforcement == "hard"
-    toggled = client.post(reverse("constraints:toggle", args=[project.pk, scenario.pk, copy.pk]))
+    row = scenario.constraints.get(name="Jacking difficulty")
+    assert row.active is False
+    toggled = client.post(reverse("constraints:toggle", args=[project.pk, scenario.pk, row.pk]))
     assert toggled.status_code == 302
-    copy.refresh_from_db()
-    assert copy.active is False
-    deleted = client.post(reverse("constraints:delete", args=[project.pk, scenario.pk, copy.pk]))
-    assert deleted.status_code == 302
-    assert not scenario.constraints.filter(pk=copy.pk).exists()
+    row.refresh_from_db()
+    assert row.active is True
+    turned_off = client.post(reverse("constraints:toggle", args=[project.pk, scenario.pk, row.pk]))
+    assert turned_off.status_code == 302
+    row.refresh_from_db()
+    assert row.active is False
+    assert (
+        client.get(f"/projects/{project.pk}/scenarios/{scenario.pk}/constraints/new/").status_code
+        == 404
+    )
+    settings = client.get(reverse("scenarios:settings", args=[project.pk, scenario.pk]))
+    assert settings.status_code == 200
+    assert b"MP per trip" in settings.content
+    assert b"Harbour" not in settings.content
+    saved = client.post(
+        reverse("scenarios:settings", args=[project.pk, scenario.pk]),
+        {"value_0": "5"},
+    )
+    assert saved.status_code == 302
+    scenario.vessel_settings.refresh_from_db()
+    assert scenario.vessel_settings.max_foundations_per_trip == 5
 
 
 def test_user_can_create_a_second_project(client):

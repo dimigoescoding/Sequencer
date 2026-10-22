@@ -372,6 +372,16 @@ def validate_parameters(
             errors.append("Direction must be ascending or descending.")
         return errors
 
+    if constraint_type == "matching_installed_first":
+        return _rule_errors(parameters, columns_present, require_attribute=True)
+
+    if constraint_type == "avoid_matching_in_first_trips":
+        errors.extend(_rule_errors(parameters, columns_present, require_attribute=True))
+        _, error = _positive_int(parameters.get("trip_count"), "Trip count")
+        if error:
+            errors.append(error)
+        return errors
+
     if constraint_type == "minimise_within_trip_distance":
         if "Easting_m" not in columns_present or "Northing_m" not in columns_present:
             errors.append(

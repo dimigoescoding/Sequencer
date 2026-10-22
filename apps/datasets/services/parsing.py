@@ -1,31 +1,88 @@
-"""Parse and validate a Foundation_Input workbook.
+"""Parse the Information, Constraints, and Settings workbook.
 
-Spreadsheet cells are untrusted data. Formulas are rejected and never evaluated.
+Spreadsheet cells are untrusted data. Formula text is never calculated. When
+Excel has already stored a calculated value, that stored value is read.
 """
 
 from __future__ import annotations
 
+import re
 import zipfile
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from typing import Any
 
-import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.cell.cell import Cell
+from openpyxl.worksheet.worksheet import Worksheet
 
-from apps.datasets.columns import (
-    ALL_COLUMNS,
-    DECIMAL_COLUMNS,
-    MANDATORY_COLUMNS,
-    POSITIVE_DECIMAL_COLUMNS,
-    POSITIVE_INT_COLUMNS,
+from apps.datasets.services.catalogue import (
+    CompiledConstraint,
+    ParsedSetting,
+    compile_constraint,
+    setting_key,
 )
 from apps.optimisation.services.types import FoundationInput
 
 TRUE_TEXT = {"yes", "true", "1", "y"}
 FALSE_TEXT = {"no", "false", "0", "n"}
+
+HEADER_FIELDS = {
+    "wtg id": "wtg_id",
+    "structure": "structure",
+    "easting": "easting",
+    "northing": "northing",
+    "aver weight": "weight",
+    "spider location": "spider_location",
+    "shallow location": "shallow_location",
+    "string": "string",
+    "jacking difficulty": "jacking_difficulty",
+    "location": "location",
+    "buffer iac-fou": "buffer_iac_fou",
+    "buffer wtg-iac": "buffer_wtg_iac",
+    "fou p50 start": "fou_p50_start",
+    "fou p50 end": "fou_p50_end",
+    "iac p50 start": "iac_p50_start",
+    "iac p50 end": "iac_p50_end",
+    "wtg p50 start": "wtg_p50_start",
+    "wtg p50 end": "wtg_p50_end",
+}
+
+REQUIRED_FIELDS = (
+    "wtg_id",
+    "weight",
+    "easting",
+    "northing",
+    "spider_location",
+    "shallow_location",
+    "jacking_difficulty",
+)
+
+FIELD_LABELS = {
+    "wtg_id": "WTG ID",
+    "weight": "Aver. Weight[t]",
+    "easting": "Easting",
+    "northing": "Northing",
+    "spider_location": "Spider location",
+    "shallow_location": "Shallow location",
+    "jacking_difficulty": "Jacking difficulty",
+    "location": "Location",
+}
+
+SOLVER_COLUMNS = {
+    "wtg_id": "Foundation_ID",
+    "weight": "Weight_t",
+    "easting": "Easting_m",
+    "northing": "Northing_m",
+    "spider_location": "Spider location",
+    "shallow_location": "Shallow location",
+    "jacking_difficulty": "Jacking difficulty",
+    "structure": "Structure",
+    "string": "String",
+    "location": "Location",
+}
 
 
 class UploadRejected(Exception):
@@ -47,6 +104,8 @@ class ParseResult:
     issues: list[Issue] = field(default_factory=list)
     columns: list[str] = field(default_factory=list)
     source_rows: list[int] = field(default_factory=list)
+    constraints: list[CompiledConstraint] = field(default_factory=list)
+    settings: list[ParsedSetting] = field(default_factory=list)
 
     @property
     def error_count(self) -> int:
@@ -57,22 +116,68 @@ class ParseResult:
         return sum(1 for issue in self.issues if issue.severity == "warning")
 
 
-def _blank(value: Any) -> bool:
-    if value is None or value is pd.NA:
-        return True
-    if isinstance(value, float) and pd.isna(value):
-        return True
-    return isinstance(value, str) and value.strip() == ""
+def parse_workbook(content: bytes) -> ParseResult:
+    if _contains_macros(content):
+        raise UploadRejected("Macro-enabled workbooks are not accepted and their code is not run.")
+    try:
+        formulas = load_workbook(BytesIO(content), data_only=False, keep_vba=False)
+        cached = load_workbook(BytesIO(content), data_only=True, keep_vba=False)
+    except Exception as exc:
+        raise UploadRejected("The file is not a readable .xlsx workbook.") from exc
 
+    information = _find_sheet(formulas, "information")
+    constraints = _find_sheet(formulas, "constraints")
+    settings = _find_sheet(formulas, "settings")
+    issues: list[Issue] = []
+    if information is None or constraints is None or settings is None:
+        missing = [
+            label
+            for label, sheet in (
+                ("Information", information),
+                ("Constraints", constraints),
+                ("Settings", settings),
+            )
+            if sheet is None
+        ]
+        issues.append(
+            Issue(
+                "error",
+                "missing_sheet",
+                "The workbook must contain Information, Constraints, and Settings sheets. Missing: "
+                + ", ".join(missing)
+                + ".",
+            )
+        )
+        return ParseResult(issues=issues)
 
-def _issue(
-    severity: str, code: str, message: str, row: int | None = None, column: str = ""
-) -> Issue:
-    return Issue(severity=severity, code=code, message=message, row_number=row, column_name=column)
+    cached_information = _find_sheet(cached, "information")
+    foundations, source_rows, columns, row_issues = _parse_information(
+        information, cached_information
+    )
+    issues.extend(row_issues)
+    constraint_rows, constraint_issues = _parse_constraints(_find_sheet(formulas, "constraints"))
+    issues.extend(constraint_issues)
+    setting_rows, setting_issues = _parse_settings(_find_sheet(formulas, "settings"))
+    issues.extend(setting_issues)
+    if not foundations and not any(issue.code == "missing_columns" for issue in issues):
+        issues.append(
+            Issue(
+                "error",
+                "no_rows",
+                "Information does not contain any location rows.",
+            )
+        )
+    return ParseResult(
+        foundations=foundations,
+        issues=issues,
+        columns=columns,
+        source_rows=source_rows,
+        constraints=constraint_rows,
+        settings=setting_rows,
+    )
 
 
 def _contains_macros(content: bytes) -> bool:
-    """Reject workbooks that contain a VBA project. Cell values are never executed."""
     try:
         with zipfile.ZipFile(BytesIO(content)) as archive:
             names = [name.lower() for name in archive.namelist()]
@@ -81,380 +186,419 @@ def _contains_macros(content: bytes) -> bool:
     return any(name.endswith("vbaproject.bin") for name in names)
 
 
-def parse_workbook(content: bytes) -> ParseResult:
-    if _contains_macros(content):
-        raise UploadRejected("Macro-enabled workbooks are not accepted and their code is not run.")
-    try:
-        workbook = load_workbook(BytesIO(content), data_only=False, keep_vba=False)
-    except Exception as exc:
-        raise UploadRejected("The file is not a readable .xlsx workbook.") from exc
-    if "Foundation_Input" not in workbook.sheetnames:
-        return ParseResult(
-            issues=[
-                _issue(
-                    "error",
-                    "missing_sheet",
-                    "The workbook must contain a sheet named Foundation_Input.",
-                )
-            ]
-        )
-    worksheet = workbook["Foundation_Input"]
-    header_cells = [cell for cell in next(worksheet.iter_rows(min_row=1, max_row=1))]
-    headers = [_header_name(cell) for cell in header_cells]
-    recognised = [name for name in headers if name in ALL_COLUMNS]
-    missing = [name for name in MANDATORY_COLUMNS if name not in recognised]
+def _find_sheet(workbook, expected: str) -> Worksheet | None:
+    for name in workbook.sheetnames:
+        if name.strip().casefold() == expected:
+            return workbook[name]
+    return None
+
+
+def _header_key(value: Any) -> str:
+    text = str(value or "").replace("\n", " ").strip().casefold()
+    text = text.replace("[t]", "")
+    text = text.replace("aver.", "aver")
+    text = re.sub(r"\s+", " ", text).strip(" .")
+    return HEADER_FIELDS.get(text, "")
+
+
+def _blank(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and value.strip() == "")
+
+
+def _parse_information(
+    worksheet: Worksheet, cached: Worksheet | None
+) -> tuple[list[FoundationInput], list[int], list[str], list[Issue]]:
     issues: list[Issue] = []
-    unknown = [name for name in headers if name and name not in ALL_COLUMNS]
-    if unknown:
-        issues.append(
-            _issue(
-                "warning",
-                "unknown_columns",
-                "Unrecognised columns were ignored: " + ", ".join(unknown) + ".",
-            )
-        )
+    header_row = next(worksheet.iter_rows(min_row=1, max_row=1))
+    fields = [_header_key(cell.value) for cell in header_row]
+    present = {name for name in fields if name}
+    missing = [FIELD_LABELS[name] for name in REQUIRED_FIELDS if name not in present]
+    columns = [SOLVER_COLUMNS[name] for name in present if name in SOLVER_COLUMNS]
     if missing:
         issues.append(
-            _issue(
+            Issue(
                 "error",
                 "missing_columns",
                 "Mandatory columns are missing: " + ", ".join(missing) + ".",
             )
         )
-        return ParseResult(issues=issues, columns=recognised)
-
-    raw_rows: list[dict[str, Any]] = []
-    source_rows: list[int] = []
-    for excel_row in worksheet.iter_rows(min_row=2):
-        values: dict[str, Any] = {}
-        formula = False
-        empty = True
-        for cell in excel_row:
-            header = _header_name_from_index(headers, cell.column)
-            if header not in ALL_COLUMNS:
-                continue
-            if cell.data_type == "f":
-                formula = True
-                issues.append(
-                    _issue(
-                        "error",
-                        "formula",
-                        f"Row {cell.row} column {header} contains a formula. "
-                        "Formulas are not executed. Enter a calculated value.",
-                        row=cell.row,
-                        column=header,
-                    )
-                )
-                values[header] = None
-                empty = False
-                continue
-            if not _blank(cell.value):
-                empty = False
-            values[header] = cell.value
-        if empty or (formula and not any(not _blank(value) for value in values.values())):
-            continue
-        raw_rows.append(values)
-        source_rows.append(excel_row[0].row if excel_row else 0)
-
-    frame = (
-        pd.DataFrame(raw_rows, columns=list(ALL_COLUMNS))
-        if raw_rows
-        else pd.DataFrame(columns=list(ALL_COLUMNS))
-    )
-    if not frame.empty:
-        frame = frame.where(pd.notna(frame), None)
-    foundations, row_issues, kept_rows = _validate_frame(frame, source_rows, set(recognised))
-    issues.extend(row_issues)
-    if not foundations and not any(issue.code == "missing_columns" for issue in issues):
-        issues.append(
-            _issue(
-                "error",
-                "no_rows",
-                "Foundation_Input does not contain any data rows.",
-            )
-        )
-    return ParseResult(
-        foundations=foundations,
-        issues=issues,
-        columns=recognised,
-        source_rows=kept_rows,
-    )
-
-
-def _header_name(cell: Cell) -> str:
-    if cell.value is None:
-        return ""
-    return str(cell.value).strip()
-
-
-def _header_name_from_index(headers: list[str], column_index: int) -> str:
-    position = column_index - 1
-    if position < 0 or position >= len(headers):
-        return ""
-    return headers[position]
-
-
-def _validate_frame(
-    frame: pd.DataFrame,
-    source_rows: list[int],
-    columns_present: set[str],
-) -> tuple[list[FoundationInput], list[Issue], list[int]]:
-    issues: list[Issue] = []
-    if frame.empty:
-        return [], issues, []
-
-    identifier_series = frame["Foundation_ID"].map(_text)
-    duplicate_mask = identifier_series.duplicated(keep=False) & identifier_series.ne("")
-    duplicate_ids = set(identifier_series[duplicate_mask].tolist())
+        return [], [], columns, issues
 
     foundations: list[FoundationInput] = []
-    kept_rows: list[int] = []
-    for position, record in enumerate(frame.to_dict(orient="records")):
-        excel_row = source_rows[position]
-        foundation, row_issues, _included = _parse_record(
-            record, excel_row, duplicate_ids, columns_present
-        )
+    source_rows: list[int] = []
+    seen: set[str] = set()
+    used_cached_formula = False
+    for excel_row in worksheet.iter_rows(min_row=2):
+        values: dict[str, Any] = {}
+        empty = True
+        row_number = excel_row[0].row
+        formula_error = False
+        for cell in excel_row:
+            if cell.column - 1 >= len(fields):
+                continue
+            field_name = fields[cell.column - 1]
+            if not field_name:
+                continue
+            cached_cell = cached.cell(cell.row, cell.column) if cached is not None else None
+            value, kind = _read_cell(cell, cached_cell)
+            if kind == "formula_missing":
+                formula_error = True
+                issues.append(
+                    Issue(
+                        "error",
+                        "formula",
+                        f"Row {cell.row} column {FIELD_LABELS.get(field_name, field_name)} contains a formula. "
+                        "Sequencer does not calculate formulas. Save the workbook from Excel so the value is stored.",
+                        row_number=cell.row,
+                        column_name=FIELD_LABELS.get(field_name, field_name),
+                    )
+                )
+                continue
+            if kind == "cached":
+                used_cached_formula = True
+            if not _blank(value):
+                empty = False
+            values[field_name] = value
+        if empty:
+            continue
+        identity = _text(values.get("wtg_id"))
+        if identity.casefold().startswith("note"):
+            continue
+        if formula_error and identity == "":
+            continue
+        foundation, row_issues = _foundation_from_values(values, row_number, seen)
         issues.extend(row_issues)
         if foundation is not None:
             foundations.append(foundation)
-            kept_rows.append(excel_row)
-
-    _summary_warnings(foundations, columns_present, issues)
-    return foundations, issues, kept_rows
-
-
-def _summary_warnings(
-    foundations: list[FoundationInput],
-    columns_present: set[str],
-    issues: list[Issue],
-) -> None:
-    included = [item for item in foundations if item.include]
-    if not included:
+            source_rows.append(row_number)
+            seen.add(foundation.foundation_id.casefold())
+    if used_cached_formula:
         issues.append(
-            _issue(
+            Issue(
                 "warning",
-                "none_included",
-                "No foundations are marked Include=Yes. Optimisation stays blocked until one is included.",
+                "cached_formula",
+                "Some cells contain formulas. Sequencer used the values already stored in the workbook and did not calculate them.",
             )
         )
-        return
-
-    def missing(predicate) -> int:
-        return sum(1 for item in included if predicate(item))
-
-    if (
-        "Easting_m" not in columns_present
-        or "Northing_m" not in columns_present
-        or missing(lambda item: item.easting_m is None or item.northing_m is None)
-    ):
-        issues.append(
-            _issue(
-                "warning",
-                "missing_coordinates",
-                "Coordinates are missing for one or more included foundations. "
-                "Distance constraints stay unavailable. This warning does not block optimisation.",
-            )
-        )
-    if "Difficulty_Value" not in columns_present or missing(
-        lambda item: item.difficulty_value is None
-    ):
-        issues.append(
-            _issue(
-                "warning",
-                "missing_difficulty",
-                "Difficulty values are missing for one or more included foundations. "
-                "Difficulty progression stays unavailable.",
-            )
-        )
-    if "Delivery_Batch" not in columns_present or missing(lambda item: item.delivery_batch == ""):
-        issues.append(
-            _issue(
-                "warning",
-                "missing_delivery_batch",
-                "Delivery batch is blank for one or more included foundations.",
-            )
-        )
-    if "Notes" not in columns_present or missing(lambda item: item.notes == ""):
-        issues.append(
-            _issue(
-                "warning",
-                "missing_notes",
-                "Notes are blank for one or more included foundations.",
-            )
-        )
-    if "Delivery_Sequence" in columns_present and missing(
-        lambda item: item.delivery_sequence is None
-    ):
-        issues.append(
-            _issue(
-                "warning",
-                "missing_delivery_sequence",
-                "Delivery sequence is blank for one or more included foundations. "
-                "Delivery-order constraints stay unavailable while any included value is blank.",
-            )
-        )
-    if "Punch_Through" not in columns_present or missing(lambda item: item.punch_through is None):
-        if "Punch_Through" not in columns_present or any(
-            item.punch_through is None for item in included
-        ):
-            issues.append(
-                _issue(
-                    "warning",
-                    "missing_punch_through",
-                    "Punch_Through is missing for one or more included foundations. "
-                    "Rules that depend on Punch_Through cannot be checked for those rows.",
-                )
-            )
+    return foundations, source_rows, columns, issues
 
 
-def _parse_record(
-    record: dict[str, Any],
-    excel_row: int,
-    duplicate_ids: set[str],
-    columns_present: set[str],
-) -> tuple[FoundationInput | None, list[Issue], bool]:
+def _read_cell(cell: Cell, cached: Cell | None) -> tuple[Any, str]:
+    if cell.data_type == "f":
+        if cached is None or cached.value is None:
+            return None, "formula_missing"
+        return cached.value, "cached"
+    return cell.value, "value"
+
+
+def _foundation_from_values(
+    values: dict[str, Any], row_number: int, seen: set[str]
+) -> tuple[FoundationInput | None, list[Issue]]:
     issues: list[Issue] = []
-    foundation_id = _text(record.get("Foundation_ID"))
+    foundation_id = _text(values.get("wtg_id"))
     if foundation_id == "":
         issues.append(
-            _issue(
+            Issue(
                 "error",
                 "missing_foundation_id",
-                f"Row {excel_row} is missing Foundation_ID.",
-                row=excel_row,
-                column="Foundation_ID",
+                f"Row {row_number} is missing WTG ID.",
+                row_number=row_number,
+                column_name="WTG ID",
             )
         )
-        return None, issues, False
-    if foundation_id in duplicate_ids:
+        return None, issues
+    if foundation_id.casefold() in seen:
         issues.append(
-            _issue(
+            Issue(
                 "error",
                 "duplicate_foundation_id",
-                f"Foundation_ID {foundation_id} is duplicated.",
-                row=excel_row,
-                column="Foundation_ID",
+                f"WTG ID {foundation_id} is duplicated.",
+                row_number=row_number,
+                column_name="WTG ID",
             )
         )
 
-    include, include_error = _parse_bool(record.get("Include"), required=True)
-    if include_error:
-        issues.append(
-            _issue(
-                "error",
-                "invalid_boolean",
-                f"Row {excel_row} Include must be Yes/No, True/False, or 1/0.",
-                row=excel_row,
-                column="Include",
-            )
-        )
-    punch_through = None
-    if "Punch_Through" in columns_present and not _blank(record.get("Punch_Through")):
-        punch_through, punch_error = _parse_bool(record.get("Punch_Through"), required=False)
-        if punch_error:
-            issues.append(
-                _issue(
-                    "error",
-                    "invalid_boolean",
-                    f"Row {excel_row} Punch_Through must be Yes/No, True/False, or 1/0.",
-                    row=excel_row,
-                    column="Punch_Through",
-                )
-            )
-
-    weight, weight_error = _parse_decimal(record.get("Weight_t"), positive=True, required=True)
+    weight, weight_error = _decimal(values.get("weight"), positive=True)
     if weight_error:
         issues.append(
-            _issue(
+            Issue(
                 "error",
                 "invalid_weight",
-                f"Row {excel_row} Weight_t must be a positive number.",
-                row=excel_row,
-                column="Weight_t",
+                f"Row {row_number} Aver. Weight[t] must be a positive number.",
+                row_number=row_number,
+                column_name="Aver. Weight[t]",
             )
         )
-
-    integers: dict[str, int | None] = {}
-    for column in POSITIVE_INT_COLUMNS:
-        if column not in columns_present:
-            integers[column] = None
-            continue
-        number, error = _parse_positive_int(record.get(column))
-        integers[column] = number
-        if error:
-            issues.append(
-                _issue(
-                    "error",
-                    "invalid_sequence",
-                    f"Row {excel_row} {column} must be a positive integer when provided.",
-                    row=excel_row,
-                    column=column,
-                )
-            )
-    earliest = integers.get("Earliest_Sequence")
-    latest = integers.get("Latest_Sequence")
-    if earliest is not None and latest is not None and earliest > latest:
+    easting, east_error = _decimal(values.get("easting"), positive=False)
+    northing, north_error = _decimal(values.get("northing"), positive=False)
+    if east_error or north_error:
         issues.append(
-            _issue(
+            Issue(
                 "error",
-                "earliest_after_latest",
-                f"Row {excel_row} Earliest_Sequence cannot be greater than Latest_Sequence.",
-                row=excel_row,
-                column="Earliest_Sequence",
+                "invalid_coordinate",
+                f"Row {row_number} Easting and Northing must be numbers.",
+                row_number=row_number,
+                column_name="Easting",
+            )
+        )
+    spider, spider_error = _boolean(values.get("spider_location"))
+    shallow, shallow_error = _boolean(values.get("shallow_location"))
+    if spider_error or shallow_error:
+        issues.append(
+            Issue(
+                "error",
+                "invalid_boolean",
+                f"Row {row_number} Spider location and Shallow location must be Yes or No.",
+                row_number=row_number,
+                column_name="Spider location",
+            )
+        )
+    difficulty = _text(values.get("jacking_difficulty"))
+    if difficulty == "":
+        issues.append(
+            Issue(
+                "error",
+                "missing_difficulty",
+                f"Row {row_number} is missing Jacking difficulty.",
+                row_number=row_number,
+                column_name="Jacking difficulty",
+            )
+        )
+    location, location_error = _optional_int(values.get("location"))
+    if location_error:
+        issues.append(
+            Issue(
+                "error",
+                "invalid_location",
+                f"Row {row_number} Location must be a positive integer when provided.",
+                row_number=row_number,
+                column_name="Location",
             )
         )
 
-    decimals: dict[str, Decimal | None] = {}
-    for column in DECIMAL_COLUMNS:
-        if column == "Weight_t" or column not in columns_present:
+    attributes: dict[str, Any] = {
+        "Structure": _text(values.get("structure")),
+        "Spider location": spider,
+        "Shallow location": shallow,
+        "String": _text(values.get("string")),
+        "Jacking difficulty": difficulty,
+        "Location": location,
+    }
+    for key, label in (
+        ("buffer_iac_fou", "Buffer IAC-FOU"),
+        ("buffer_wtg_iac", "Buffer WTG-IAC"),
+        ("fou_p50_start", "FOU P50 start"),
+        ("fou_p50_end", "FOU P50 end"),
+        ("iac_p50_start", "IAC P50 start"),
+        ("iac_p50_end", "IAC P50 end"),
+        ("wtg_p50_start", "WTG P50 start"),
+        ("wtg_p50_end", "WTG P50 end"),
+    ):
+        if key in values and not _blank(values.get(key)):
+            attributes[label] = _json_ready(values.get(key))
+
+    return (
+        FoundationInput(
+            foundation_id=foundation_id,
+            include=True,
+            weight_t=weight,
+            easting_m=easting,
+            northing_m=northing,
+            attributes=attributes,
+        ),
+        issues,
+    )
+
+
+def _parse_constraints(worksheet: Worksheet | None) -> tuple[list[CompiledConstraint], list[Issue]]:
+    if worksheet is None:
+        return [], []
+    rows = list(worksheet.iter_rows(values_only=True))
+    if not rows:
+        return [], [Issue("error", "missing_columns", "The Constraints sheet has no header row.")]
+    headers = [_plain_header(value) for value in rows[0]]
+    indexes = {name: position for position, name in enumerate(headers) if name}
+    required = ("package", "name", "explanation", "type", "severity", "status")
+    missing = [name for name in required if name not in indexes]
+    if missing:
+        return [], [
+            Issue(
+                "error",
+                "missing_columns",
+                "The Constraints sheet is missing columns: " + ", ".join(missing) + ".",
+            )
+        ]
+    compiled: list[CompiledConstraint] = []
+    issues: list[Issue] = []
+    order = 0
+    for offset, row in enumerate(rows[1:], start=2):
+        name = _cell_text(row, indexes["name"])
+        if name == "" and _cell_text(row, indexes["package"]) == "":
             continue
-        number, error = _parse_decimal(
-            record.get(column), positive=column in POSITIVE_DECIMAL_COLUMNS
-        )
-        decimals[column] = number
-        if error:
+        order += 1
+        enforcement = _cell_text(row, indexes["type"]).casefold()
+        status = _cell_text(row, indexes["status"]).casefold()
+        if enforcement not in {"hard", "soft"}:
             issues.append(
-                _issue(
+                Issue(
                     "error",
-                    "invalid_number",
-                    f"Row {excel_row} {column} must be numeric when supplied.",
-                    row=excel_row,
-                    column=column,
+                    "invalid_constraint",
+                    f"Constraints row {offset} Type must be Hard or Soft.",
+                    row_number=offset,
+                    column_name="Type",
                 )
             )
+            enforcement = "hard"
+        if status not in {"active", "not active"}:
+            issues.append(
+                Issue(
+                    "error",
+                    "invalid_constraint",
+                    f"Constraints row {offset} Status must be Active or Not active.",
+                    row_number=offset,
+                    column_name="Status",
+                )
+            )
+            status = "not active"
+        reported = _cell_text(row, indexes["severity"]) or "NA"
+        item = compile_constraint(
+            package=_cell_text(row, indexes["package"]),
+            name=name or f"Constraint {order}",
+            explanation=_cell_text(row, indexes["explanation"]),
+            enforcement=enforcement,
+            reported_severity=reported,
+            active=status == "active",
+            source_row=offset,
+        )
+        if item.constraint_type == "unsupported":
+            issues.append(
+                Issue(
+                    "warning",
+                    "unsupported_constraint",
+                    f"Constraint '{item.name}' is stored, but Sequencer has no solver rule for that name. "
+                    "The explanation is not interpreted.",
+                    row_number=offset,
+                    column_name="Name",
+                )
+            )
+        if item.enforcement == "soft" and item.severity is None:
+            issues.append(
+                Issue(
+                    "error",
+                    "invalid_severity",
+                    f"Constraints row {offset} needs a severity for a soft constraint.",
+                    row_number=offset,
+                    column_name="Severity",
+                )
+            )
+        compiled.append(item)
+    if not compiled:
+        issues.append(
+            Issue(
+                "warning",
+                "no_constraints",
+                "The Constraints sheet does not contain any constraint rows.",
+            )
+        )
+    return compiled, issues
 
-    notes = ""
-    if "Notes" in columns_present and not _blank(record.get("Notes")):
-        notes = str(record.get("Notes")).strip()[:2000]
-    batch = ""
-    if "Delivery_Batch" in columns_present and not _blank(record.get("Delivery_Batch")):
-        batch_value = record.get("Delivery_Batch")
-        if isinstance(batch_value, float) and batch_value.is_integer():
-            batch = str(int(batch_value))
-        elif isinstance(batch_value, int) and not isinstance(batch_value, bool):
-            batch = str(batch_value)
-        else:
-            batch = str(batch_value).strip()
 
-    foundation = FoundationInput(
-        foundation_id=foundation_id,
-        include=bool(include),
-        weight_t=weight,
-        delivery_sequence=integers.get("Delivery_Sequence"),
-        length_m=decimals.get("Length_m"),
-        delivery_batch=batch,
-        easting_m=decimals.get("Easting_m"),
-        northing_m=decimals.get("Northing_m"),
-        punch_through=punch_through,
-        difficulty_value=decimals.get("Difficulty_Value"),
-        eccentricity_limit_m=decimals.get("Eccentricity_Limit_m"),
-        fixed_trip=integers.get("Fixed_Trip"),
-        fixed_position=integers.get("Fixed_Position"),
-        earliest_sequence=earliest,
-        latest_sequence=latest,
-        notes=notes,
-    )
-    return foundation, issues, bool(include)
+def _parse_settings(worksheet: Worksheet | None) -> tuple[list[ParsedSetting], list[Issue]]:
+    if worksheet is None:
+        return [], []
+    rows = list(worksheet.iter_rows(values_only=True))
+    if not rows:
+        return [], [Issue("error", "missing_columns", "The Settings sheet has no header row.")]
+    headers = [_plain_header(value) for value in rows[0]]
+    indexes = {name: position for position, name in enumerate(headers) if name}
+    if "setting" not in indexes or "number" not in indexes:
+        return [], [
+            Issue(
+                "error",
+                "missing_columns",
+                "The Settings sheet must contain Setting and Number columns.",
+            )
+        ]
+    settings: list[ParsedSetting] = []
+    issues: list[Issue] = []
+    seen: set[str] = set()
+    for offset, row in enumerate(rows[1:], start=2):
+        name = _cell_text(row, indexes["setting"])
+        if name == "":
+            continue
+        raw = row[indexes["number"]] if indexes["number"] < len(row) else None
+        if _blank(raw):
+            issues.append(
+                Issue(
+                    "error",
+                    "missing_setting",
+                    f"Settings row {offset} {name} has no number.",
+                    row_number=offset,
+                    column_name="Number",
+                )
+            )
+            continue
+        try:
+            number = Decimal(str(raw))
+        except (InvalidOperation, ValueError):
+            issues.append(
+                Issue(
+                    "error",
+                    "invalid_setting",
+                    f"Settings row {offset} {name} must be a number.",
+                    row_number=offset,
+                    column_name="Number",
+                )
+            )
+            continue
+        key = setting_key(name)
+        if key in seen:
+            issues.append(
+                Issue(
+                    "error",
+                    "duplicate_setting",
+                    f"Setting {name} is duplicated.",
+                    row_number=offset,
+                    column_name="Setting",
+                )
+            )
+            continue
+        seen.add(key)
+        if key == "mp_per_trip" and (
+            number != number.to_integral_value() or number < 1 or number > 20
+        ):
+            issues.append(
+                Issue(
+                    "error",
+                    "invalid_setting",
+                    f"Settings row {offset} MP per trip must be a whole number from 1 to 20.",
+                    row_number=offset,
+                    column_name="Number",
+                )
+            )
+        settings.append(
+            ParsedSetting(
+                name=name,
+                key=key,
+                value=format(number, "f"),
+                source_row=offset,
+            )
+        )
+    if not settings:
+        issues.append(
+            Issue("warning", "no_settings", "The Settings sheet does not contain any settings.")
+        )
+    return settings, issues
+
+
+def _plain_header(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip().casefold())
+
+
+def _cell_text(row: tuple[Any, ...], index: int) -> str:
+    if index >= len(row):
+        return ""
+    return _text(row[index])
 
 
 def _text(value: Any) -> str:
@@ -467,18 +611,10 @@ def _text(value: Any) -> str:
     return str(value).strip()
 
 
-def _parse_bool(value: Any, *, required: bool) -> tuple[bool | None, bool]:
-    if _blank(value):
-        return (None, True) if required else (None, False)
+def _boolean(value: Any) -> tuple[bool | None, bool]:
     if isinstance(value, bool):
         return value, False
-    if isinstance(value, (int, float, Decimal)) and not isinstance(value, bool):
-        if value == 1:
-            return True, False
-        if value == 0:
-            return False, False
-        return None, True
-    text = str(value).strip().casefold()
+    text = _text(value).casefold()
     if text in TRUE_TEXT:
         return True, False
     if text in FALSE_TEXT:
@@ -486,12 +622,8 @@ def _parse_bool(value: Any, *, required: bool) -> tuple[bool | None, bool]:
     return None, True
 
 
-def _parse_decimal(
-    value: Any, *, positive: bool, required: bool = False
-) -> tuple[Decimal | None, bool]:
-    if _blank(value):
-        return (None, True) if required else (None, False)
-    if isinstance(value, bool):
+def _decimal(value: Any, *, positive: bool) -> tuple[Decimal | None, bool]:
+    if _blank(value) or isinstance(value, bool):
         return None, True
     try:
         number = Decimal(str(value))
@@ -501,10 +633,10 @@ def _parse_decimal(
         return None, True
     if positive and number <= 0:
         return None, True
-    return number, False
+    return number.quantize(Decimal("0.001")), False
 
 
-def _parse_positive_int(value: Any) -> tuple[int | None, bool]:
+def _optional_int(value: Any) -> tuple[int | None, bool]:
     if _blank(value):
         return None, False
     if isinstance(value, bool):
@@ -516,3 +648,21 @@ def _parse_positive_int(value: Any) -> tuple[int | None, bool]:
     if number != number.to_integral_value() or number < 1:
         return None, True
     return int(number), False
+
+
+def _json_ready(value: Any) -> Any:
+    if isinstance(value, datetime):
+        if value.hour == value.minute == value.second == value.microsecond == 0:
+            return value.date().isoformat()
+        return value.isoformat(sep=" ")
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, float):
+        return format(Decimal(str(value)).quantize(Decimal("0.001")), "f")
+    if isinstance(value, Decimal):
+        return format(value, "f")
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value
+    return _text(value)

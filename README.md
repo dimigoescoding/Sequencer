@@ -128,15 +128,13 @@ python manage.py check --deploy
 
 ## Excel input
 
-Download `Foundation_Input_template.xlsx` from a project's Foundation Data page. The workbook needs one sheet, `Foundation_Input`.
+Download `Sequencer_input_template.xlsx` from a project's Foundation Data page. The workbook needs three sheets: `Information`, `Constraints`, and `Settings`.
 
-Mandatory columns: `Foundation_ID`, `Include`, `Weight_t`, `Delivery_Sequence`.
+`Information` holds one row per location. Required columns are WTG ID, average weight, Easting, Northing, Spider location, Shallow location, and Jacking difficulty. `Constraints` holds the rules the scenario can activate or deactivate. `Settings` holds values such as `MP per trip`, which can be edited and cannot be extended with a new setting.
 
-Optional columns: `Length_m`, `Delivery_Batch`, `Easting_m`, `Northing_m`, `Punch_Through`, `Difficulty_Value`, `Eccentricity_Limit_m`, `Fixed_Trip`, `Fixed_Position`, `Earliest_Sequence`, `Latest_Sequence`, `Notes`.
+WTG ID must be unique. Spider location and Shallow location accept Yes/No. Weight must be positive. Macro-enabled workbooks are rejected. Formula text is not calculated. If Excel has stored a calculated value, that stored value is used.
 
-`Foundation_ID` must be unique. `Include` and `Punch_Through` accept Yes/No, True/False, or 1/0. `Weight_t` must be positive. Sequence fields must be positive integers when present, and earliest cannot exceed latest. Empty optional cells stay null. Formulas and macro-enabled workbooks are rejected and are not executed.
-
-Critical errors block activation and optimisation. Warnings, such as missing coordinates, do not. `Fixed_Trip`, `Fixed_Position`, `Earliest_Sequence`, and `Latest_Sequence` in the sheet are stored data. They are not turned into constraints unless you add those constraints yourself. A `Fixed_Position` above the scenario capacity is reported before the solver starts.
+Critical errors block activation and optimisation. The scenario copies constraints and settings from the selected dataset version. Choosing another version reloads them.
 
 Uploads are limited to `.xlsx` files of at most 2 MB.
 
@@ -183,7 +181,7 @@ Free web service limits that this configuration respects:
 - No persistent disk, and no shell. Local files disappear when the service sleeps, restarts, or redeploys. Original workbooks are stored in Postgres through Django's storage API. Exports are built from database rows.
 - The service sleeps after 15 minutes without a request and takes about a minute to wake. Sleeping does not consume the 750 Free instance hours granted per workspace each month.
 - The solver time limit is 1–30 seconds so a request can finish on this CPU. A result found before a proof is `FEASIBLE`, not `OPTIMAL`.
-- At most 40 included foundations per solve, and within-trip distance for at most 20. Larger models are rejected before CP-SAT starts.
+- At most 60 included foundations per solve, including within-trip distance. Larger models are rejected before CP-SAT starts.
 - Workbooks are limited to 2 MB so a few uploads cannot fill the 1 GB database.
 
 Steps:
@@ -204,7 +202,7 @@ Do not add a second Free web service in the same workspace if you want the full 
 - One package, one vessel, and no simultaneous vessels.
 - No dates, weather, cost, maps, Gantt charts, or PDF reports.
 - No user registration or email verification.
-- At most 40 included foundations per solve. Within-trip distance is modelled for at most 20.
+- At most 60 included foundations per solve, including within-trip distance.
 - Solver time is limited to 1–30 seconds. A feasible result inside the limit is labelled `FEASIBLE`, not `OPTIMAL`, unless OR-Tools proves optimality.
 - The hosted database on the Free plan expires 30 days after creation. Upgrade it before the grace period ends if the data should be kept.
 - A hard "minimise distance" constraint has no numeric distance cap. It is a primary objective term. The validator reports it as information, not a pass/fail limit.

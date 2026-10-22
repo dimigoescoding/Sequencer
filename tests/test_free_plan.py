@@ -8,8 +8,7 @@ from apps.optimisation.services.scaling import (
     MAX_INCLUDED_FOUNDATIONS,
     MAX_SOLVER_TIME_LIMIT_SECONDS,
 )
-from apps.scenarios.forms import VesselSettingsForm
-from apps.scenarios.models import VesselSettings
+from apps.scenarios.forms import WorkbookSettingsForm
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 from django.core.management import call_command
@@ -34,21 +33,16 @@ def test_database_storage_round_trip():
     assert storage.exists(name) is False
 
 
-def test_solver_time_form_rejects_a_limit_the_free_request_cannot_finish():
-    settings = VesselSettings(max_foundations_per_trip=4, solver_time_limit_seconds=20)
-    form = VesselSettingsForm(
-        data={
-            "max_foundations_per_trip": 4,
-            "allow_partial_final_trip": True,
-            "solver_time_limit_seconds": 60,
-        },
-        instance=settings,
-    )
-    assert form.is_valid() is False
-    assert "solver_time_limit_seconds" in form.errors
+def test_settings_form_only_edits_workbook_values():
+    form = WorkbookSettingsForm([("MP per trip", "4")], data={"value_0": "6"})
+    assert form.is_valid() is True
+    assert form.value_map() == {"MP per trip": "6"}
+    assert "solver_time_limit_seconds" not in form.fields
+    rejected = WorkbookSettingsForm([("MP per trip", "4")], data={"value_0": "60"})
+    assert rejected.is_valid() is False
     assert MAX_SOLVER_TIME_LIMIT_SECONDS == 30
-    assert MAX_INCLUDED_FOUNDATIONS <= 40
-    assert MAX_DISTANCE_FOUNDATIONS <= 20
+    assert 50 <= MAX_INCLUDED_FOUNDATIONS <= 60
+    assert 50 <= MAX_DISTANCE_FOUNDATIONS <= 60
 
 
 def test_ensure_admin_creates_once_and_does_not_reset_the_password(monkeypatch):

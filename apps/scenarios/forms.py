@@ -1,5 +1,8 @@
+from decimal import Decimal
+
 from django import forms
 
+from apps.datasets.services.catalogue import setting_key
 from apps.scenarios.models import Scenario, VesselSettings
 from apps.ui import apply_bootstrap
 
@@ -53,3 +56,38 @@ class VesselSettingsForm(forms.ModelForm):
         if value < 1 or value > 30:
             raise forms.ValidationError("Use a solver time limit from 1 to 30 seconds.")
         return value
+
+
+class WorkbookSettingsForm(forms.Form):
+    """Edit the values of settings that arrived in the workbook."""
+
+    def __init__(self, definitions: list[tuple[str, str]], *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.definitions = definitions
+        for index, (name, value) in enumerate(definitions):
+            self.fields[f"value_{index}"] = forms.DecimalField(
+                label=name,
+                initial=value,
+                help_text="Loaded from the workbook. You can change this value.",
+            )
+        apply_bootstrap(self)
+
+    def clean(self):
+        cleaned = super().clean()
+        for index, (name, _value) in enumerate(self.definitions):
+            key = f"value_{index}"
+            number = cleaned.get(key)
+            if number is None or setting_key(name) != "mp_per_trip":
+                continue
+            if number != number.to_integral_value() or number < 1 or number > 20:
+                self.add_error(key, "MP per trip must be a whole number from 1 to 20.")
+        return cleaned
+
+    def value_map(self) -> dict[str, str]:
+        values: dict[str, str] = {}
+        for index, (name, _value) in enumerate(self.definitions):
+            number = self.cleaned_data[f"value_{index}"]
+            if not isinstance(number, Decimal):
+                number = Decimal(str(number))
+            values[name] = format(number, "f")
+        return values

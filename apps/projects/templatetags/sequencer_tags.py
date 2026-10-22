@@ -24,6 +24,20 @@ BADGES = {
 }
 
 
+@register.filter(name="attr")
+def attribute(attributes, key: str) -> str:
+    if not isinstance(attributes, dict):
+        return "—"
+    value = attributes.get(key)
+    if value is None or value == "":
+        return "—"
+    if value is True:
+        return "Yes"
+    if value is False:
+        return "No"
+    return str(value)
+
+
 @register.filter
 def badge_class(value) -> str:
     return BADGES.get(str(value), "text-bg-secondary")

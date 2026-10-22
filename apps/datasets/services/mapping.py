@@ -24,4 +24,5 @@ def to_foundation_input(row: Foundation) -> FoundationInput:
         earliest_sequence=row.earliest_sequence,
         latest_sequence=row.latest_sequence,
         notes=row.notes,
+        attributes=dict(row.attributes or {}),
     )

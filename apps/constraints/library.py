@@ -92,6 +92,16 @@ CONSTRAINT_TYPES: dict[str, dict[str, str]] = {
             "only when you enable them and supply harbour coordinates. No map is drawn."
         ),
     },
+    "matching_installed_first": {
+        "label": "Matching locations first",
+        "summary": (
+            "Locations that match the attribute occupy the first positions, in any order among themselves."
+        ),
+    },
+    "avoid_matching_in_first_trips": {
+        "label": "Avoid matches in the first trips",
+        "summary": "Matching locations are kept out of the first trips named by the rule.",
+    },
 }
 
 TYPE_ORDER: list[str] = list(CONSTRAINT_TYPES)

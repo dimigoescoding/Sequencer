@@ -3,7 +3,7 @@
 {% block content %}
 {% include "partials/project_nav.html" with nav="data" %}
 <h1 class="h3">Upload foundation workbook</h1>
-<p>The workbook must contain a sheet named <code>Foundation_Input</code>. Each upload creates a new immutable dataset version. Formulas are not executed.</p>
+<p>The workbook must contain <code>Information</code>, <code>Constraints</code>, and <code>Settings</code> sheets. Each upload creates a new immutable dataset version. Formulas are not calculated.</p>
 <form method="post" enctype="multipart/form-data" class="col-lg-7">
   {% csrf_token %}
   {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}

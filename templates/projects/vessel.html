@@ -3,7 +3,7 @@
 {% block content %}
 {% include "partials/project_nav.html" with nav="vessel" %}
 <h1 class="h3">Vessel settings</h1>
-<p class="text-secondary">Each scenario has its own vessel settings. Payload, speed, and harbour coordinates stay empty until you enter them.</p>
+<p class="text-secondary">Each scenario keeps the settings loaded from its workbook. Open a scenario to change those values.</p>
 {% if not scenarios %}
   <div class="card"><div class="card-body empty-state">Create a scenario before editing vessel settings. <a href="{% url 'scenarios:create' project.pk %}">New scenario</a></div></div>
 {% else %}
@@ -11,7 +11,7 @@
     {% for scenario in scenarios %}
       <a class="list-group-item list-group-item-action" href="{% url 'scenarios:settings' project.pk scenario.pk %}">
         <strong>{{ scenario.name }}</strong>
-        <div class="small text-secondary">{{ scenario.vessel_settings.max_foundations_per_trip }} per trip · partial final trip {{ scenario.vessel_settings.allow_partial_final_trip|yesno:"on,off" }} · payload {% if scenario.vessel_settings.base_maximum_trip_payload_t %}{{ scenario.vessel_settings.base_maximum_trip_payload_t }} t{% else %}not set{% endif %}</div>
+        <div class="small text-secondary">MP per trip {{ scenario.vessel_settings.max_foundations_per_trip }}</div>
       </a>
     {% endfor %}
   </div>

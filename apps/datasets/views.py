@@ -57,18 +57,23 @@ def dataset_upload(request, project_id: int):
         except UploadRejected as exc:
             form.add_error("workbook", str(exc))
         else:
+            summary = (
+                f"Upload complete. Version {version.version_number} is stored with "
+                f"{version.row_count} foundations, {version.constraint_rows.count()} constraints, "
+                f"and {version.setting_rows.count()} settings."
+            )
             if version.error_count:
                 messages.error(
                     request,
-                    "The workbook was stored, but critical errors block activation and optimisation.",
+                    summary + " Critical errors block activation and optimisation.",
                 )
             elif version.warning_count:
                 messages.warning(
                     request,
-                    "The workbook was stored with warnings. Warnings do not block optimisation.",
+                    summary + " Warnings do not block optimisation.",
                 )
             else:
-                messages.success(request, "Dataset version stored.")
+                messages.success(request, summary)
             return redirect("datasets:version", project_id=project.pk, version_id=version.pk)
     return render(request, "datasets/upload.html", {"project": project, "form": form})
 
@@ -80,7 +85,7 @@ def dataset_template(request, project_id: int):
         build_template(),
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-    response["Content-Disposition"] = 'attachment; filename="Foundation_Input_template.xlsx"'
+    response["Content-Disposition"] = 'attachment; filename="Sequencer_input_template.xlsx"'
     return response
 
 

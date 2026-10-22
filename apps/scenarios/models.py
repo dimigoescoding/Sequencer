@@ -51,6 +51,7 @@ class VesselSettings(models.Model):
     transit_speed_knots = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     harbour_easting_m = models.DecimalField(max_digits=16, decimal_places=3, null=True, blank=True)
     harbour_northing_m = models.DecimalField(max_digits=16, decimal_places=3, null=True, blank=True)
+    workbook_values = models.JSONField(default=dict, blank=True)
 
     class Meta:
         indexes = [models.Index(fields=["scenario"])]
