@@ -13,15 +13,13 @@ Sequencer stores the constraints you enter. It does not suggest a methodology, f
 
 1. Open Foundation Data.
 2. Download the template if you need the column headings.
-3. Upload an `.xlsx` workbook. The sheet must be named `Foundation_Input`.
-4. The new version is stored even when it has errors, together with the original file. Versions are not edited in place. Upload a corrected workbook to create the next version.
+3. Upload an `.xlsx` workbook with `Information`, `Constraints`, and `Settings` sheets.
+4. The page confirms that the upload is stored and lists the foundation, constraint, and setting counts. The new version is kept even when it has errors, together with the original file. Versions are not edited in place. Upload a corrected workbook to create the next version.
 5. Read the error and warning lists. Activate a version only when it has no critical errors.
 
-Critical errors include a missing sheet or mandatory column, a missing or duplicate `Foundation_ID`, an invalid Yes/No value, a non-positive weight, a non-integer sequence value, and an earliest sequence after the latest sequence. Formulas are errors. The application does not calculate them.
+Critical errors include a missing sheet or mandatory column, a missing or duplicate WTG ID, an invalid Yes/No value, a non-positive weight, a coordinate that is not a number, or a soft constraint without a severity. A formula with no value stored in the file is an error. Sequencer does not calculate formulas. A value already stored by Excel is read and reported as a warning.
 
-Warnings include missing coordinates, difficulty, delivery batch, or notes. Warnings do not block optimisation. They do disable constraint types that need the missing data. The constraint chooser states the reason.
-
-`Fixed_Trip`, `Fixed_Position`, `Earliest_Sequence`, and `Latest_Sequence` in the workbook are data columns. Add a constraint if you want the solver to enforce them. A fixed position above the scenario's foundations-per-trip limit is reported when you generate a sequence.
+Warnings do not block optimisation. An unknown constraint name is stored and shown, and it is not turned into a rule from its explanation.
 
 ## Correcting validation errors
 
@@ -36,36 +34,24 @@ A project can hold several scenarios on the same dataset. Example names such as 
 3. Rename, duplicate, or delete a scenario from its page. Duplicating copies vessel settings and constraints so you can change one copy without changing the other.
 4. Previous runs stay on the scenario until you delete the scenario.
 
-## Vessel settings
+## Settings
 
-Each scenario has its own settings.
+Each scenario shows the settings from the workbook. `MP per trip` is the only setting in the supplied file. You can change its value. You cannot add another setting. The number of trips is the included location count divided by `MP per trip`, rounded up. The final trip may be shorter than that capacity.
 
-- Maximum foundations per trip defaults to 4.
-- The final trip may be partial. Turn that off only when every trip, including the last, must be full.
-- Solver time limit defaults to 20 seconds. The allowed range is 1–30. The page waits for that solve, and the server runs one solve at a time.
-- Payload, transit speed, and harbour coordinates stay empty until you enter them. Empty does not mean zero, and it does not enable payload or harbour-leg checks.
+The solver time limit stays at 20 seconds and is capped at 30. It is not a workbook setting.
 
-The number of trips is the included foundation count divided by the maximum per trip, rounded up.
+## Constraints
 
-## Adding constraints
+Open the scenario, then Constraints. The rows are the Constraints sheet: package, name, explanation, hard or soft, severity, and status. Activate or deactivate a row. You cannot add, rename, delete, or rewrite a constraint. The explanation is shown as text. Sequencer does not read it as a new rule.
 
-Open the scenario, then Constraints, then Add constraint. Pick a type. Types that need missing columns are listed with an explanation and cannot be saved.
+A soft severity of 0.5 in the workbook is half of the internal 1–100 scale, so the solver uses 50. Hard rows show `NA`.
 
-The form is a structured builder:
+Named rules in this workbook:
 
-- Choose enforcement: hard (must be satisfied) or soft (preference).
-- For a soft constraint, set severity from 1 to 100. A higher severity pulls harder against other soft constraints of the same kind. It does not override a hard constraint.
-- For attribute rules, choose the column, an operator, and the comparison value. You cannot type a formula.
-
-Examples of what the builder can express:
-
-- If `Punch_Through` equals Yes, allowed positions are 3 and 4, enforced as hard.
-- If `Difficulty_Value` is greater than 75, prefer later in the sequence, enforced as soft with a severity you choose.
-- If `Delivery_Batch` equals a batch you name, the matching foundations are allowed only from a trip you name, enforced as hard through an earliest-sequence rule.
-
-Actions on a saved constraint: edit, duplicate, activate, deactivate, delete, and move up or down. Deleting asks for confirmation. Display order is for reading the list. It does not change hard feasibility.
-
-A soft payload limit shows a warning because the result may exceed the limit. The excess is reported as a trade-off.
+- Spider locations are installed first, in any order among themselves.
+- At most one shallow location is placed on a trip.
+- Infield sailing minimises distance inside each trip from the coordinates.
+- Jacking difficulty, when active, prefers to keep difficult locations out of the first three trips.
 
 ## Hard versus soft constraints
 

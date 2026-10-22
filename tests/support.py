@@ -24,6 +24,101 @@ HEADERS = [
 ]
 
 
+INFO_HEADERS = [
+    "WTG ID",
+    "Structure",
+    "Easting",
+    "Northing",
+    "Aver. Weight[t]",
+    "Spider location",
+    "Shallow location",
+    "String",
+    "Jacking difficulty",
+    "Location",
+]
+
+DEFAULT_CONSTRAINTS = [
+    (
+        "FOU",
+        "Spider locations FOU",
+        "Spider locations should be installed first, but in no particular order.",
+        "Hard",
+        "NA",
+        "Active",
+    ),
+    (
+        "FOU",
+        "Shallow locations",
+        "Only one shallow location per trip allowed",
+        "Hard",
+        "NA",
+        "Active",
+    ),
+    (
+        "FOU",
+        "Infield sailing optimization FOU",
+        "Optimizes the infield sailing time within the trip from the given coordinates.",
+        "Soft",
+        0.5,
+        "Active",
+    ),
+    (
+        "FOU",
+        "Jacking difficulty",
+        "Avoid difficult locations in the first 3 trips",
+        "Soft",
+        0.5,
+        "Not active",
+    ),
+]
+
+
+def location_row(wtg: str, **overrides) -> dict:
+    row = {
+        "WTG ID": wtg,
+        "Structure": "WTG",
+        "Easting": 100,
+        "Northing": 200,
+        "Aver. Weight[t]": 100,
+        "Spider location": "NO",
+        "Shallow location": "NO",
+        "String": "S1",
+        "Jacking difficulty": "Easy",
+        "Location": 1,
+    }
+    row.update(overrides)
+    return row
+
+
+def information_workbook(
+    rows: list[dict],
+    *,
+    include_constraints: bool = True,
+    include_settings: bool = True,
+    settings: list[tuple] | None = None,
+    constraints: list[tuple] | None = None,
+) -> bytes:
+    workbook = Workbook()
+    information = workbook.active
+    information.title = "Information"
+    information.append(INFO_HEADERS)
+    for row in rows:
+        information.append([row.get(column) for column in INFO_HEADERS])
+    if include_constraints:
+        sheet = workbook.create_sheet("Constraints")
+        sheet.append(["Package", "Name", "Explanation", "Type", "Severity", "Status"])
+        for item in constraints or DEFAULT_CONSTRAINTS:
+            sheet.append(list(item))
+    if include_settings:
+        sheet = workbook.create_sheet("Settings")
+        sheet.append(["Setting", "Number"])
+        for name, number in settings or [("MP per trip", 4)]:
+            sheet.append([name, number])
+    buffer = BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
 def workbook_bytes(
     rows: list[dict], *, sheet: str = "Foundation_Input", headers: list[str] | None = None
 ) -> bytes:

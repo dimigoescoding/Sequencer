@@ -94,7 +94,14 @@ Overall validation is `Passed` only when no hard check failed. The sequence tabl
 
 ## Known limitations
 
-- MVP 1 solves at most 40 included foundations. Distance constraints are limited to 20 because every consecutive pair is modelled explicitly, and the Render Free instance has 512 MB of RAM and 0.1 CPU. The solver time limit is capped at 30 seconds for the same reason.
+- MVP 1 solves at most 60 included foundations, including within-trip distance. The supplied workbook has 50 locations. The Render Free instance has 512 MB of RAM and 0.1 CPU, and the solver time limit stays capped at 30 seconds. A run that stops at the time limit is `FEASIBLE` or `UNKNOWN`, not a fabricated optimum.
+
+Workbook severities on a 0–1 scale are mapped onto 1–100 before the penalty (0.5 becomes 50). Hard rows use `NA` and have no severity. These named workbook rules are applied as written; the explanation cell is stored and is not parsed:
+
+- `Spider locations FOU`: matching spider locations occupy the first positions, in any order.
+- `Shallow locations`: at most one matching shallow location on a trip.
+- `Infield sailing optimization FOU`: soft within-trip Euclidean distance from Easting and Northing, without harbour legs.
+- `Jacking difficulty`: soft preference to keep difficult locations out of the first three trips.
 - Payload, harbour coordinates, and transit speed have no engineering default. Distance harbour legs stay unavailable until coordinates are entered on the constraint or the vessel settings.
 - Transit speed is stored for the scenario record. MVP 1 does not convert distance into time.
 - Two-foundation hard precedence cycles are rejected before the solver. Longer cycles are left for CP-SAT and return `INFEASIBLE` when they cannot be satisfied.

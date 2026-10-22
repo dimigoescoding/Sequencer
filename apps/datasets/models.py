@@ -77,6 +77,7 @@ class Foundation(models.Model):
     earliest_sequence = models.PositiveIntegerField(null=True, blank=True)
     latest_sequence = models.PositiveIntegerField(null=True, blank=True)
     notes = models.TextField(blank=True)
+    attributes = models.JSONField(default=dict, blank=True)
 
     class Meta:
         ordering = ["source_row", "id"]
@@ -124,3 +125,50 @@ class DatasetIssue(models.Model):
 
     def __str__(self) -> str:
         return self.message
+
+
+class DatasetConstraint(models.Model):
+    """Constraint row copied from the workbook. The scenario can only switch it on or off."""
+
+    class Enforcement(models.TextChoices):
+        HARD = "hard", "Hard"
+        SOFT = "soft", "Soft"
+
+    dataset_version = models.ForeignKey(
+        DatasetVersion, on_delete=models.CASCADE, related_name="constraint_rows"
+    )
+    package = models.CharField(max_length=64, blank=True)
+    name = models.CharField(max_length=200)
+    explanation = models.TextField(blank=True)
+    enforcement = models.CharField(max_length=8, choices=Enforcement.choices)
+    severity = models.PositiveSmallIntegerField(null=True, blank=True)
+    reported_severity = models.CharField(max_length=32, blank=True)
+    active = models.BooleanField(default=True)
+    constraint_type = models.CharField(max_length=64)
+    parameters_json = models.JSONField(default=dict)
+    source_row = models.PositiveIntegerField(null=True, blank=True)
+    display_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["display_order", "id"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class DatasetSetting(models.Model):
+    """One setting from the workbook. The user may change the value, not the list."""
+
+    dataset_version = models.ForeignKey(
+        DatasetVersion, on_delete=models.CASCADE, related_name="setting_rows"
+    )
+    name = models.CharField(max_length=200)
+    key = models.CharField(max_length=64)
+    value = models.CharField(max_length=64)
+    source_row = models.PositiveIntegerField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["source_row", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.name}: {self.value}"

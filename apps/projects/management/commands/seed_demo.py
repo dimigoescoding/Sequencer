@@ -7,10 +7,10 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from openpyxl import Workbook
 
-from apps.constraints.models import Constraint
 from apps.datasets.services.uploads import activate_dataset, create_dataset_version
 from apps.projects.models import Project
 from apps.scenarios.models import Scenario, VesselSettings
+from apps.scenarios.services.sync import sync_scenario_from_dataset
 
 DEMO_USERNAME = "demo"
 DEMO_PASSWORD = "demo-local-only"
@@ -58,20 +58,11 @@ class Command(BaseCommand):
         scenario = Scenario.objects.create(
             project=project,
             name=DEMO_SCENARIO,
-            description="Synthetic hard and soft constraints entered as ordinary records. Sequencer did not recommend them.",
+            description="Constraints and settings loaded from the synthetic workbook.",
             dataset_version=version,
         )
-        VesselSettings.objects.create(
-            scenario=scenario,
-            max_foundations_per_trip=4,
-            allow_partial_final_trip=True,
-            base_maximum_trip_payload_t="5000",
-            solver_time_limit_seconds=20,
-            harbour_easting_m="0",
-            harbour_northing_m="0",
-        )
-        for order, payload in enumerate(_constraints(), start=1):
-            Constraint.objects.create(scenario=scenario, display_order=order, **payload)
+        VesselSettings.objects.create(scenario=scenario, solver_time_limit_seconds=20)
+        sync_scenario_from_dataset(scenario)
         self.stdout.write(
             self.style.SUCCESS(f"Demo user '{DEMO_USERNAME}' / project '{DEMO_PROJECT}' is ready.")
         )
@@ -80,153 +71,81 @@ class Command(BaseCommand):
 
 def _workbook() -> bytes:
     workbook = Workbook()
-    worksheet = workbook.active
-    worksheet.title = "Foundation_Input"
-    headers = [
-        "Foundation_ID",
-        "Include",
-        "Weight_t",
-        "Delivery_Sequence",
-        "Length_m",
-        "Delivery_Batch",
-        "Easting_m",
-        "Northing_m",
-        "Punch_Through",
-        "Difficulty_Value",
-        "Eccentricity_Limit_m",
-        "Fixed_Trip",
-        "Fixed_Position",
-        "Earliest_Sequence",
-        "Latest_Sequence",
-        "Notes",
+    information = workbook.active
+    information.title = "Information"
+    information.append(
+        [
+            "WTG ID",
+            "Structure",
+            "Easting",
+            "Northing",
+            "Aver. Weight[t]",
+            "Spider location",
+            "Shallow location",
+            "String",
+            "Jacking difficulty",
+            "Location",
+        ]
+    )
+    rows = [
+        ("S1", 0, 0, 500, "YES", "NO", "Easy", 1),
+        ("S2", 100, 0, 520, "YES", "NO", "Easy", 2),
+        ("A1", 0, 100, 480, "NO", "YES", "Easy", 3),
+        ("A2", 100, 100, 490, "NO", "NO", "Difficult", 4),
+        ("B1", 0, 200, 470, "NO", "YES", "Easy", 5),
+        ("B2", 100, 200, 460, "NO", "NO", "Easy", 6),
+        ("C1", 0, 300, 450, "NO", "NO", "Easy", 7),
+        ("C2", 100, 300, 440, "NO", "NO", "Difficult", 8),
     ]
-    worksheet.append(headers)
-    for number in range(1, 13):
-        worksheet.append(
-            [
-                f"F{number:02d}",
-                "No" if number == 12 else "Yes",
-                800 + number * 25,
-                number,
-                20 + number,
-                1 if number <= 6 else 2,
-                1000 + number * 150,
-                2000 + (number % 3) * 80,
-                "Yes" if number in {3, 8} else "No",
-                number * 8,
-                None,
-                1 if number == 1 else None,
-                1 if number == 2 else None,
-                8 if number == 11 else None,
-                6 if number == 4 else None,
-                f"Synthetic foundation F{number:02d}",
-            ]
+    for wtg, easting, northing, weight, spider, shallow, difficulty, location in rows:
+        information.append(
+            [wtg, "WTG", easting, northing, weight, spider, shallow, "S1", difficulty, location]
         )
+    constraints = workbook.create_sheet("Constraints")
+    constraints.append(["Package", "Name", "Explanation", "Type", "Severity", "Status"])
+    constraints.append(
+        [
+            "FOU",
+            "Spider locations FOU",
+            "Spider locations should be installed first, but in no particular order.",
+            "Hard",
+            "NA",
+            "Active",
+        ]
+    )
+    constraints.append(
+        [
+            "FOU",
+            "Shallow locations",
+            "Only one shallow location per trip allowed",
+            "Hard",
+            "NA",
+            "Active",
+        ]
+    )
+    constraints.append(
+        [
+            "FOU",
+            "Infield sailing optimization FOU",
+            "Optimizes the infield sailing time within the trip from the given coordinates.",
+            "Soft",
+            0.5,
+            "Active",
+        ]
+    )
+    constraints.append(
+        [
+            "FOU",
+            "Jacking difficulty",
+            "Avoid difficult locations in the first 3 trips",
+            "Soft",
+            0.5,
+            "Not active",
+        ]
+    )
+    settings = workbook.create_sheet("Settings")
+    settings.append(["Setting", "Number"])
+    settings.append(["MP per trip", 4])
     buffer = BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()
-
-
-def _constraints() -> list[dict]:
-    return [
-        _hard("Payload limit", "maximum_trip_payload", {"maximum_payload_t": "5000"}),
-        _hard(
-            "Punch-through positions",
-            "allowed_positions",
-            {
-                "attribute": "Punch_Through",
-                "operator": "equals",
-                "value": "Yes",
-                "allowed_positions": [3, 4],
-            },
-        ),
-        _hard(
-            "Punch-through count",
-            "maximum_matching_per_trip",
-            {
-                "attribute": "Punch_Through",
-                "operator": "equals",
-                "value": "Yes",
-                "maximum_count": 2,
-            },
-        ),
-        _hard("F01 on trip 1", "fixed_trip", {"foundation_id": "F01", "trip_number": 1}),
-        _hard(
-            "F02 in position 1",
-            "fixed_vessel_position",
-            {"foundation_id": "F02", "position_number": 1},
-        ),
-        _hard(
-            "F11 not before sequence 8",
-            "earliest_sequence",
-            {"foundation_id": "F11", "earliest_sequence": 8},
-        ),
-        _hard(
-            "F04 not after sequence 6",
-            "latest_sequence",
-            {"foundation_id": "F04", "latest_sequence": 6},
-        ),
-        _hard(
-            "F01 before F06",
-            "precedence",
-            {
-                "predecessor_foundation_id": "F01",
-                "successor_foundation_id": "F06",
-                "minimum_gap": 1,
-            },
-        ),
-        _soft("Delivery alignment", "delivery_sequence_alignment", {"tolerance_positions": 2}, 50),
-        _soft(
-            "Easier foundations earlier",
-            "difficulty_progression",
-            {
-                "attribute": "Difficulty_Value",
-                "applicable_start_trip": 1,
-                "applicable_end_trip": 3,
-                "direction": "ascending",
-            },
-            60,
-        ),
-        _soft(
-            "Shorter trips",
-            "minimise_within_trip_distance",
-            {"include_harbour_legs": True, "harbour_easting_m": "0", "harbour_northing_m": "0"},
-            25,
-        ),
-        {
-            "name": "Inactive same-trip example",
-            "constraint_type": "same_trip",
-            "description": "Stored inactive so it does not affect the solve until a user activates it.",
-            "active": False,
-            "enforcement": "soft",
-            "severity": 10,
-            "scope": "",
-            "parameters_json": {"foundation_ids": ["F05", "F06"]},
-        },
-    ]
-
-
-def _hard(name: str, constraint_type: str, parameters: dict) -> dict:
-    return {
-        "name": name,
-        "constraint_type": constraint_type,
-        "description": "Synthetic hard constraint for the local demo.",
-        "active": True,
-        "enforcement": "hard",
-        "severity": None,
-        "scope": "",
-        "parameters_json": parameters,
-    }
-
-
-def _soft(name: str, constraint_type: str, parameters: dict, severity: int) -> dict:
-    return {
-        "name": name,
-        "constraint_type": constraint_type,
-        "description": "Synthetic soft preference for the local demo.",
-        "active": True,
-        "enforcement": "soft",
-        "severity": severity,
-        "scope": parameters.get("scope", ""),
-        "parameters_json": parameters,
-    }

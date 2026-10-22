@@ -156,6 +156,8 @@ class _Builder:
             "delivery_sequence_alignment": self._delivery,
             "difficulty_progression": self._difficulty,
             "minimise_within_trip_distance": self._distance,
+            "matching_installed_first": self._installed_first,
+            "avoid_matching_in_first_trips": self._avoid_first_trips,
         }.get(kind)
         if handler:
             handler(constraint)
@@ -481,6 +483,46 @@ class _Builder:
                 excesses.append(excess)
         if excesses and max_raw > 0:
             self._penalise(sum(excesses), max_raw, constraint.severity)
+
+    def _installed_first(self, constraint: ConstraintInput) -> None:
+        indexes = [
+            self.index[item.foundation_id]
+            for item in matching_foundations(self.included, constraint.parameters)
+        ]
+        count = len(indexes)
+        if count == 0:
+            return
+        if constraint.enforcement == "hard":
+            for index in indexes:
+                self.model.Add(self.position_of[index] <= count)
+            return
+        violations = []
+        for index in indexes:
+            over = self._int(0, self.n, "late_group")
+            self.model.Add(over >= self.position_of[index] - count)
+            violations.append(over)
+        self._penalise(sum(violations), max(count * self.n, 1), constraint.severity)
+
+    def _avoid_first_trips(self, constraint: ConstraintInput) -> None:
+        trip_count = int(constraint.parameters["trip_count"])
+        earliest = trip_count * self.capacity + 1
+        indexes = [
+            self.index[item.foundation_id]
+            for item in matching_foundations(self.included, constraint.parameters)
+        ]
+        if not indexes:
+            return
+        if constraint.enforcement == "hard":
+            for index in indexes:
+                self.model.Add(self.position_of[index] >= earliest)
+            return
+        limit = max(earliest - 1, 1)
+        violations = []
+        for index in indexes:
+            short = self._int(0, limit, "early_trip")
+            self.model.Add(short >= earliest - self.position_of[index])
+            violations.append(short)
+        self._penalise(sum(violations), max(limit * len(indexes), 1), constraint.severity)
 
     def _distance(self, constraint: ConstraintInput) -> None:
         matrix = [
