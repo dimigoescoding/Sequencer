@@ -105,8 +105,8 @@ def find_conflicts(
             and count > MAX_DISTANCE_FOUNDATIONS
         ):
             conflicts.append(
-                f"{constraint.name} depends on within-trip distance. MVP 1 models that inside "
-                f"CP-SAT for up to {MAX_DISTANCE_FOUNDATIONS} included foundations."
+                f"{constraint.name} orders the route inside each trip after the locations are chosen. "
+                f"MVP 1 does this for up to {MAX_DISTANCE_FOUNDATIONS} included foundations."
             )
             continue
         if constraint.enforcement != "hard":

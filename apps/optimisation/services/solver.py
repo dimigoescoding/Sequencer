@@ -26,10 +26,8 @@ from apps.optimisation.services.metrics import (
     ordering_pairs,
     window_pair_count,
 )
-from apps.optimisation.services.routing import harbour_coordinates, metres_between, metres_xy
 from apps.optimisation.services.scaling import (
     NORM,
-    PRIMARY_WEIGHT,
     SOLVER_SEED,
     weight_kg,
 )
@@ -525,62 +523,8 @@ class _Builder:
         self._penalise(sum(violations), max(limit * len(indexes), 1), constraint.severity)
 
     def _distance(self, constraint: ConstraintInput) -> None:
-        matrix = [
-            [metres_between(left, right) if left is not right else 0 for right in self.included]
-            for left in self.included
-        ]
-        max_pair = max((max(row) for row in matrix), default=0)
-        legs: list[Any] = []
-        leg_count = 0
-        for position in range(self.n - 1):
-            if position // self.capacity != (position + 1) // self.capacity:
-                continue
-            leg_count += 1
-            terms = []
-            for left in range(self.n):
-                for right in range(self.n):
-                    if left == right or matrix[left][right] == 0:
-                        continue
-                    both = self._bool("leg")
-                    self.model.AddMultiplicationEquality(
-                        both, [self.x[left][position], self.x[right][position + 1]]
-                    )
-                    terms.append(matrix[left][right] * both)
-            if terms:
-                legs.append(sum(terms))
-        harbour = harbour_coordinates(constraint.parameters, self.vessel)
-        harbour_max = 0
-        if harbour is not None:
-            easting, northing = harbour
-            harbour_distance = [
-                metres_xy(item.easting_m, item.northing_m, easting, northing)
-                for item in self.included
-            ]
-            harbour_max = max(harbour_distance, default=0)
-            for trip in range(1, self.trips + 1):
-                positions = self._trip_positions(trip)
-                if not positions:
-                    continue
-                legs.append(
-                    sum(
-                        harbour_distance[index] * self.x[index][positions[0]]
-                        for index in range(self.n)
-                    )
-                )
-                legs.append(
-                    sum(
-                        harbour_distance[index] * self.x[index][positions[-1]]
-                        for index in range(self.n)
-                    )
-                )
-        if not legs:
-            return
-        raw = sum(legs)
-        if constraint.enforcement == "hard":
-            self.objective_terms.append(PRIMARY_WEIGHT * raw)
-            return
-        max_raw = max_pair * max(leg_count, 1) + harbour_max * 2 * max(self.trips, 1)
-        self._penalise(raw, max(max_raw, 1), constraint.severity)
+        """Leave trip membership to CP-SAT. The route inside each trip is chosen later."""
+        del constraint
 
     def solve(self) -> tuple[str, int | None, list[str]]:
         if self.n == 0:

@@ -50,7 +50,7 @@ Named rules in this workbook:
 
 - Spider locations are installed first, in any order among themselves.
 - At most one shallow location is placed on a trip.
-- Infield sailing minimises distance inside each trip from the coordinates.
+- Infield sailing orders the locations already assigned to each trip so the straight-line route inside that trip is as short as possible.
 - Jacking difficulty, when active, prefers to keep difficult locations out of the first three trips.
 
 ## Hard versus soft constraints
