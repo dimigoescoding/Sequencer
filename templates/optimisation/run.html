@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load sequencer_tags %}
+{% load sequencer_tags static %}
 {% block title %}Run {{ run.pk }} — Sequencer{% endblock %}
 {% block content %}
 {% include "partials/project_nav.html" with nav="runs" %}
@@ -35,6 +35,7 @@
   <li class="nav-item"><a class="nav-link {% if tab == 'sequence' %}active{% endif %}" href="{% querystring tab='sequence' page=1 %}">Installation sequence</a></li>
   <li class="nav-item"><a class="nav-link {% if tab == 'trips' %}active{% endif %}" href="{% querystring tab='trips' %}">Trip summary</a></li>
   <li class="nav-item"><a class="nav-link {% if tab == 'validation' %}active{% endif %}" href="{% querystring tab='validation' %}">Validation</a></li>
+  <li class="nav-item"><a class="nav-link {% if tab == 'visual' %}active{% endif %}" href="{% querystring tab='visual' %}">Visual</a></li>
 </ul>
 <div class="card border-top-0"><div class="card-body">
   {% if tab == 'trips' %}
@@ -61,6 +62,38 @@
           <td><span class="badge {{ row.status|badge_class }}">{{ row.status }}</span></td><td>{{ row.affected_foundations|default:"—" }}</td><td>{{ row.explanation }}</td>
         </tr>{% endfor %}</tbody>
       </table></div>
+    {% endif %}
+  {% elif tab == 'visual' %}
+    <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-2">
+      <div>
+        <h2 class="h5 mb-1">Installation sequence</h2>
+        <p class="small text-secondary mb-0">Easting/Northing · equal scale · no harbour or inter-trip legs{% if timelapse.within_trip %} · within-trip {{ timelapse.within_trip }}{% endif %}</p>
+      </div>
+      <div id="timelapse-status" class="fw-bold"></div>
+    </div>
+    {% if timelapse.frames %}
+      <svg id="timelapse-map" class="timelapse-map" viewBox="0 0 1500 860" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Installation sequence on easting and northing axes"></svg>
+      <div class="timelapse-controls">
+        <button type="button" id="timelapse-play">Pause</button>
+        <button type="button" id="timelapse-prev">◀ Step</button>
+        <button type="button" id="timelapse-next">Step ▶</button>
+        <label>Speed
+          <select id="timelapse-speed">
+            <option value="1200">0.5×</option>
+            <option value="600" selected>1×</option>
+            <option value="300">2×</option>
+            <option value="150">4×</option>
+          </select>
+        </label>
+        <input id="timelapse-slider" type="range" min="1" max="{{ timelapse.frames|length }}" value="1">
+        <span class="small text-secondary">Completed routes fade automatically.</span>
+      </div>
+      {{ timelapse.frames|json_script:"timelapse-data" }}
+      <script src="{% static 'js/timelapse.js' %}"></script>
+    {% elif timelapse.missing %}
+      <p class="empty-state">These foundations have no easting or northing, so the plot is not drawn: {{ timelapse.missing|join:", " }}.</p>
+    {% else %}
+      <p class="empty-state">No sequence was stored, so there is nothing to plot.</p>
     {% endif %}
   {% else %}
     <form class="row g-2 mb-3" method="get">

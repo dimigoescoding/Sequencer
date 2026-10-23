@@ -81,6 +81,8 @@ Installation Sequence lists order, trip, vessel position, weight, delivery devia
 
 Trip Summary lists count, order, payload, punch-through count, difficulty, and checks. Route distance appears when coordinates exist and a distance constraint is active. The unit is nautical miles. One nautical mile is 1,852 metres.
 
+Visual plots the stored sequence on equal-scale easting and northing axes. Play, step, speed, and the slider move through the installation order. Each trip has its own colour, and completed trips fade. A line is drawn only between consecutive foundations in the same trip. Harbour transit and the join from one trip to the next are not drawn. The caption shows that within-trip distance in nautical miles. If a sequenced foundation has no easting or northing, the plot stays blank and those foundation IDs are named. A run with no stored sequence has nothing to plot.
+
 Validation lists each check with target, actual result, status, affected foundations, and an explanation. Badges are Passed, Failed, Warning, Information, and Soft trade-off. The run passes only when every hard check passes.
 
 ## Exporting Excel
