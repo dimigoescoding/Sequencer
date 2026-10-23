@@ -36,6 +36,19 @@ body {
   white-space: nowrap;
 }
 
+.foundation-scroll {
+  max-height: 32rem;
+  overflow: auto;
+}
+
+.foundation-scroll thead th {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 1;
+  box-shadow: inset 0 -1px 0 var(--sq-line);
+}
+
 .timelapse-stage:fullscreen,
 .timelapse-stage:-webkit-full-screen {
   display: flex;
