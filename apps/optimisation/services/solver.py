@@ -8,6 +8,7 @@ constraints become scaled penalty terms. Hard constraints are never dropped.
 from __future__ import annotations
 
 import time
+from dataclasses import replace
 from decimal import Decimal
 from typing import Any
 
@@ -26,6 +27,7 @@ from apps.optimisation.services.metrics import (
     ordering_pairs,
     window_pair_count,
 )
+from apps.optimisation.services.routing import harbour_coordinates, metres_between, metres_xy
 from apps.optimisation.services.scaling import (
     NORM,
     SOLVER_SEED,
@@ -45,6 +47,19 @@ def solve_order(
     for constraint in active:
         builder.add_constraint(constraint)
     started = time.perf_counter()
+    if any(item.constraint_type == "minimise_within_trip_distance" for item in active):
+        structural = [
+            item for item in active if item.constraint_type != "minimise_within_trip_distance"
+        ]
+        hint_vessel = replace(
+            vessel,
+            solver_time_limit_seconds=min(5, vessel.solver_time_limit_seconds),
+        )
+        _status, _objective, _runtime, _message, hint = solve_order(
+            foundations, hint_vessel, structural
+        )
+        if hint:
+            builder.hint(hint)
     status, objective, order = builder.solve()
     runtime = time.perf_counter() - started
     message = _status_message(status, active)
@@ -90,6 +105,7 @@ class _Builder:
         self.total_kg = sum(self.kilograms)
         self._sequence = 0
         self.objective_terms: list[Any] = []
+        self.hard_distance_terms: list[Any] = []
         self.x = [
             [self.model.NewBoolVar(f"x_{foundation}_{position}") for position in range(self.n)]
             for foundation in range(self.n)
@@ -523,14 +539,86 @@ class _Builder:
         self._penalise(sum(violations), max(limit * len(indexes), 1), constraint.severity)
 
     def _distance(self, constraint: ConstraintInput) -> None:
-        """Leave trip membership to CP-SAT. The route inside each trip is chosen later."""
-        del constraint
+        """Minimise total within-trip metres while choosing membership and order."""
+        if self.n == 0:
+            return
+        matrix = [
+            [metres_between(self.included[left], self.included[right]) for right in range(self.n)]
+            for left in range(self.n)
+        ]
+        harbour = harbour_coordinates(constraint.parameters, self.vessel)
+        harbour_metres = (
+            [
+                metres_xy(item.easting_m, item.northing_m, harbour[0], harbour[1])
+                for item in self.included
+            ]
+            if harbour is not None
+            else []
+        )
+        leg_upper = max(max(row) for row in matrix) if matrix else 0
+        harbour_upper = max(harbour_metres) if harbour_metres else 0
+        if leg_upper == 0 and harbour_upper == 0:
+            return
+        legs: list[Any] = []
+        leg_count = 0
+        harbour_count = 0
+        for trip in range(1, self.trips + 1):
+            positions = self._trip_positions(trip)
+            for left, right in zip(positions, positions[1:], strict=False):
+                legs.append(self._pair_metres(left, right, matrix, leg_upper))
+                leg_count += 1
+            if harbour_metres and positions:
+                legs.append(self._node_metres(positions[0], harbour_metres))
+                legs.append(self._node_metres(positions[-1], harbour_metres))
+                harbour_count += 2
+        if not legs:
+            return
+        total = sum(legs)
+        if constraint.enforcement == "hard":
+            self.hard_distance_terms.append(total)
+            return
+        max_raw = leg_upper * leg_count + harbour_upper * harbour_count
+        self._penalise(total, max_raw, constraint.severity)
+
+    def _pair_metres(self, left: int, right: int, matrix: list[list[int]], upper: int) -> Any:
+        # One origin occupies `left` and one destination occupies `right`.
+        # Minimising this variable makes it equal to that pair's metres.
+        cost = self._int(0, upper, "leg")
+        for origin in range(self.n):
+            for destination in range(self.n):
+                distance = matrix[origin][destination]
+                if distance <= 0 or origin == destination:
+                    continue
+                self.model.Add(
+                    cost >= distance * (self.x[origin][left] + self.x[destination][right] - 1)
+                )
+        return cost
+
+    def _node_metres(self, position: int, values: list[int]) -> Any:
+        return sum(
+            values[foundation] * self.x[foundation][position] for foundation in range(self.n)
+        )
+
+    def hint(self, order: list[str]) -> None:
+        positions = {name: index for index, name in enumerate(order)}
+        chosen = [positions.get(item.foundation_id) for item in self.included]
+        if len(order) != self.n or any(slot is None for slot in chosen):
+            return
+        for foundation, slot in enumerate(chosen):
+            for index in range(self.n):
+                self.model.AddHint(self.x[foundation][index], 1 if index == slot else 0)
 
     def solve(self) -> tuple[str, int | None, list[str]]:
         if self.n == 0:
             return "ERROR", None, []
-        if self.objective_terms:
-            self.model.Minimize(sum(self.objective_terms))
+        terms = list(self.objective_terms)
+        if self.hard_distance_terms:
+            # One metre outranks every soft penalty currently in the model.
+            weight = len(terms) * 100 * NORM + 1
+            terms.extend(weight * raw for raw in self.hard_distance_terms)
+        has_objective = bool(terms)
+        if has_objective:
+            self.model.Minimize(sum(terms))
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = float(self.vessel.solver_time_limit_seconds)
         solver.parameters.random_seed = SOLVER_SEED
@@ -552,7 +640,7 @@ class _Builder:
                     order[position] = self.included[foundation].foundation_id
         if any(item == "" for item in order):
             return "ERROR", None, []
-        objective = int(round(solver.ObjectiveValue())) if self.objective_terms else 0
+        objective = int(round(solver.ObjectiveValue())) if has_objective else 0
         return status, objective, order
 
 

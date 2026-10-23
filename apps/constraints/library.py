@@ -91,7 +91,8 @@ CONSTRAINT_TYPES: dict[str, dict[str, str]] = {
     "minimise_within_trip_distance": {
         "label": "Minimise within-trip distance",
         "summary": (
-            "Minimise total Euclidean distance within each trip. Harbour legs are included "
+            "Minimise the total straight-line distance inside trips. The solver chooses "
+            "which locations share a trip and the route together. Harbour legs are included "
             "only when you enable them and supply harbour coordinates. No map is drawn."
         ),
     },

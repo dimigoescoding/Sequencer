@@ -17,7 +17,6 @@ from apps.optimisation.services.evaluation import evaluate
 from apps.optimisation.services.scaling import MAX_SOLVER_TIME_LIMIT_SECONDS, SOLVER_SEED
 from apps.optimisation.services.solver import solve_order
 from apps.optimisation.services.types import ConstraintInput, ValidationRow, VesselConfig
-from apps.optimisation.services.within_trip import optimise_within_trip_routes
 from apps.scenarios.models import Scenario, VesselSettings
 
 
@@ -108,8 +107,6 @@ def _execute(scenario: Scenario) -> OptimisationRun:
     started = timezone.now()
     try:
         status, objective, runtime, message, order = solve_order(foundations, vessel, constraints)
-        if order:
-            order = optimise_within_trip_routes(order, foundations, vessel, constraints)
     except Exception as exc:
         status, objective, runtime, message, order = (
             "ERROR",

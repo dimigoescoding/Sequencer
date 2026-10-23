@@ -21,7 +21,7 @@ vessel_position = ((sequence_position - 1) mod N) + 1
 
 The number of trips is `ceil(included_count / N)`. Every trip except the last is full. The last trip is short only when `allow_partial_final_trip` is enabled. If it is disabled and the count is not a multiple of `N`, pre-solver validation blocks the run.
 
-The CP-SAT sequence decides which locations share a trip. When a within-trip distance constraint is active, the locations inside each trip are then reordered into the shortest route that still satisfies the hard constraints. That reorder does not move a location into another trip.
+When a within-trip distance constraint is active, total within-trip distance is part of the CP-SAT objective. The same search chooses which locations share a trip and the order of those locations. The route is not rearranged after the trips have been fixed. A feasible assignment found without the distance term is given to the search as a starting hint. The search may still move a location into another trip.
 
 ## Hard constraints
 
@@ -39,7 +39,7 @@ Hard constraints are added with `model.Add`. They are never rewritten as penalti
 | Maximum or minimum count | Matching foundations per applicable trip stay inside the count. |
 | Same trip or separate trip | `trip_of` is equal, or pairwise unequal. |
 | Attribute ordering, delivery alignment, difficulty progression | The measured violation must be zero. |
-| Minimise within-trip distance | Not added to the CP-SAT model. After the trip groups are fixed, each group is placed in the shortest route allowed by the hard constraints. There is no numeric distance cap. The validator reports the metres as information. |
+| Minimise within-trip distance | The objective includes the sum of Euclidean legs between consecutive positions in the same trip, plus harbour legs when enabled. A hard term is weighted ahead of soft penalties. A soft term is scaled by severity. There is no numeric distance cap. The validator reports the metres as information. |
 
 Attribute filters are resolved from the uploaded values before the model is built. They are not decision-dependent expressions, and they are not executable code.
 
@@ -61,7 +61,7 @@ ceil(R * severity * 1000 / M)
 
 `M` depends on the constraint type and the current dataset, for example the maximum delivery deviation outside tolerance, the number of ordering pairs, or the total payload. That stops a large unit, such as kilograms or metres, from dominating a count-based preference by accident.
 
-The objective is the sum of these scaled terms. Within-trip distance is applied after this search and is not part of the stored objective. The stored objective is that scaled integer, not a physical cost.
+The objective is the sum of these scaled terms and any within-trip distance term. A hard distance term is the total metres multiplied by a weight large enough that one metre outranks every soft penalty. A soft distance term is scaled from metres with the formula above. The stored objective is that integer, not a physical cost.
 
 ## Objective construction
 
@@ -101,7 +101,7 @@ Workbook severities on a 0–1 scale are mapped onto 1–100 before the penalty 
 
 - `Spider locations FOU`: matching spider locations occupy the first positions, in any order.
 - `Shallow locations`: at most one matching shallow location on a trip.
-- `Infield sailing optimization FOU`: after the locations in each trip are chosen, order them by straight-line distance from Easting and Northing, without harbour legs.
+- `Infield sailing optimization FOU`: minimise straight-line distance from Easting and Northing inside trips, choosing trip membership and order together, without harbour legs.
 - `Jacking difficulty`: soft preference to keep difficult locations out of the first three trips.
 - Payload, harbour coordinates, and transit speed have no engineering default. Distance harbour legs stay unavailable until coordinates are entered on the constraint or the vessel settings.
 - Transit speed is stored for the scenario record. MVP 1 does not convert distance into time.

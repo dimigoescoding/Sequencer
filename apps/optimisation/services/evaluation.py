@@ -1026,13 +1026,13 @@ def _distance(constraint, placements, vessel, add, governing):
     add(
         "Within-trip distance",
         constraint.name,
-        "Shortest route inside each trip",
+        "Minimum total within-trip distance",
         f"{distance} m",
         "Information",
         [],
-        "The solver chooses which locations share a trip. Their order is then the shortest "
-        "route that still satisfies the hard constraints. There is no maximum distance, so "
-        "the metres are information and are not a pass or fail limit.",
+        "Total within-trip distance is the solver objective. Trip membership and the route "
+        "are chosen together. There is no maximum distance, so the metres are information "
+        "and are not a pass or fail limit.",
     )
     return _empty()
 

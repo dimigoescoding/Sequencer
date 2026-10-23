@@ -8,8 +8,9 @@ upper bound M for that raw value on this dataset. The objective contribution is
 so every soft constraint is mapped onto 0..1000 before severity is applied.
 A severity of 100 is exactly twice a severity of 50 for the same raw ratio.
 
-Within-trip distance is not one of these penalty terms. After the solver has
-chosen the locations in each trip, that route is ordered separately.
+A soft within-trip distance term uses this same formula, with the raw value in
+metres. A hard within-trip distance term is the total metres, weighted so that
+it is minimised ahead of every soft penalty.
 """
 
 from __future__ import annotations
