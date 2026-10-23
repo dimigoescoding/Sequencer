@@ -79,7 +79,7 @@ The run summary shows the project, scenario, dataset version, time, solver statu
 
 Installation Sequence lists order, trip, vessel position, weight, delivery deviation, and the constraints that governed each foundation. Search by foundation ID, sort columns, and page through long results.
 
-Trip Summary lists count, order, payload, punch-through count, difficulty, and checks. Route distance appears when coordinates exist and a distance constraint is active. The unit is metres.
+Trip Summary lists count, order, payload, punch-through count, difficulty, and checks. Route distance appears when coordinates exist and a distance constraint is active. The unit is nautical miles. One nautical mile is 1,852 metres.
 
 Validation lists each check with target, actual result, status, affected foundations, and an explanation. Badges are Passed, Failed, Warning, Information, and Soft trade-off. The run passes only when every hard check passes.
 

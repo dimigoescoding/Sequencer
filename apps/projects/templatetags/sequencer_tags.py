@@ -43,6 +43,15 @@ def badge_class(value) -> str:
     return BADGES.get(str(value), "text-bg-secondary")
 
 
+@register.filter
+def nautical_miles(metres) -> str:
+    from apps.optimisation.services.routing import format_nautical_miles
+
+    if metres is None or metres == "":
+        return "—"
+    return format_nautical_miles(metres)
+
+
 @register.simple_tag(takes_context=True)
 def querystring(context, **kwargs) -> str:
     params = context["request"].GET.copy()

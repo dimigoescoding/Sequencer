@@ -242,10 +242,9 @@ def test_solver_minimises_distance_inside_one_trip():
     assert order[1] == "C"
     review = evaluate(foundations, limits, [rule], order)
     assert review.validation_status == "Passed"
-    assert any(
-        row.check_name == "Within-trip distance" and row.status == "Information"
-        for row in review.validation_rows
-    )
+    shown = {row.check_name: row.actual_result for row in review.validation_rows}
+    assert shown["Total sailing distance"] == "0.003 nm"
+    assert shown["Within-trip distance"] == "0.003 nm"
     inactive = constraint(
         "Route",
         "minimise_within_trip_distance",

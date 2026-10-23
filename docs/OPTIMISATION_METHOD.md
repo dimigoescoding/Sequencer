@@ -41,7 +41,7 @@ Hard constraints are added with `model.Add`. They are never rewritten as penalti
 | Maximum or minimum count | Matching foundations per applicable trip stay inside the count. |
 | Same trip or separate trip | `trip_of` is equal, or pairwise unequal. |
 | Attribute ordering, delivery alignment, difficulty progression | The measured violation must be zero. |
-| Minimise total sailing distance | The objective is the sum of Euclidean legs between every pair of consecutive sequence positions. That includes the leg joining one trip to the next. Harbour transit is not included. A hard term is weighted ahead of soft penalties. A soft term is scaled by severity. A following pass may reverse or reorder trips when that shortens the same total. There is no numeric distance cap. The validator reports the metres as information. |
+| Minimise total sailing distance | The objective is the sum of Euclidean legs between every pair of consecutive sequence positions. That includes the leg joining one trip to the next. Harbour transit is not included. A hard term is weighted ahead of soft penalties. A soft term is scaled by severity. A following pass may reverse or reorder trips when that shortens the same total. There is no numeric distance cap. The validator reports the distance in nautical miles. One nautical mile is 1,852 metres. |
 
 Attribute filters are resolved from the uploaded values before the model is built. They are not decision-dependent expressions, and they are not executable code.
 

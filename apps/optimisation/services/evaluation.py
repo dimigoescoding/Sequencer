@@ -29,7 +29,7 @@ from apps.optimisation.services.metrics import (
     window_pair_count,
     window_violation,
 )
-from apps.optimisation.services.routing import metres_between
+from apps.optimisation.services.routing import format_nautical_miles, metres_between
 from apps.optimisation.services.scaling import scaled_penalty, weight_kg
 from apps.optimisation.services.solver import _bound_targets, _sequence_bound_value
 from apps.optimisation.services.types import (
@@ -1032,19 +1032,19 @@ def _distance(constraint, placements, vessel, add, governing):
         "Total sailing distance",
         constraint.name,
         "Sum of every consecutive foundation-to-foundation leg",
-        f"{sailing} m",
+        format_nautical_miles(sailing),
         "Information",
         [],
         "This is the solver objective. It includes the sail inside each trip and the sail "
         "from the end of one trip to the start of the next. Harbour transit is not included. "
-        "There is no maximum distance, so the metres are information and are not a pass or "
-        "fail limit.",
+        "There is no maximum distance, so the nautical miles are information and are not a "
+        "pass or fail limit.",
     )
     add(
         "Within-trip distance",
         constraint.name,
         "Sailing that stays inside trips",
-        f"{distance} m",
+        format_nautical_miles(distance),
         "Information",
         [],
         "This is the part of the sailing total that stays inside trips. The objective also "
