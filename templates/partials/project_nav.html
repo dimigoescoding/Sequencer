@@ -1,5 +1,8 @@
-<ul class="nav nav-pills subnav mb-4 flex-nowrap overflow-auto">
-  <li class="nav-item"><a class="nav-link {% if nav == 'overview' %}active{% endif %}" href="{% url 'projects:detail' project.pk %}">Overview</a></li>
-  <li class="nav-item"><a class="nav-link {% if nav == 'data' %}active{% endif %}" href="{% url 'datasets:index' project.pk %}">Foundation Data</a></li>
-  <li class="nav-item"><a class="nav-link {% if nav == 'scenarios' %}active{% endif %}" href="{% url 'scenarios:list' project.pk %}">Scenarios</a></li>
-</ul>
+<aside class="app-sidebar" aria-label="Project">
+  <div class="app-sidebar-brand">{{ project.name }}</div>
+  <ul class="nav flex-column">
+    <li class="nav-item"><a class="nav-link {% if nav == 'overview' %}active{% endif %}" href="{% url 'projects:detail' project.pk %}">Overview</a></li>
+    <li class="nav-item"><a class="nav-link {% if nav == 'data' %}active{% endif %}" href="{% url 'datasets:index' project.pk %}">Foundation Data</a></li>
+    <li class="nav-item"><a class="nav-link {% if nav == 'scenarios' %}active{% endif %}" href="{% url 'scenarios:list' project.pk %}">Scenarios</a></li>
+  </ul>
+</aside>
