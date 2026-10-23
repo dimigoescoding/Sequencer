@@ -1047,8 +1047,17 @@ def _distance(constraint, placements, vessel, add, governing):
         format_nautical_miles(distance),
         "Information",
         [],
-        "This is the part of the sailing total that stays inside trips. The objective also "
-        "includes the sail from the end of one trip to the start of the next.",
+        "This is the part of the sailing total that stays inside trips.",
+    )
+    add(
+        "Trip-to-trip distance",
+        constraint.name,
+        "Sail from the end of one trip to the start of the next",
+        format_nautical_miles(sailing - distance),
+        "Information",
+        [],
+        "These are the joins between trips. Total sailing distance equals the within-trip "
+        "distance plus this trip-to-trip distance. Harbour transit is not included.",
     )
     return _empty()
 

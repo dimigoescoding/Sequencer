@@ -207,7 +207,7 @@ Do not add a second Free web service in the same workspace if you want the full 
 - At most 60 included foundations per solve, including total sailing distance.
 - Solver time is limited to 1–600 seconds. A feasible result inside the limit is labelled `FEASIBLE`, not `OPTIMAL`, unless OR-Tools proves optimality.
 - The hosted database on the Free plan expires 30 days after creation. Upgrade it before the grace period ends if the data should be kept.
-- An active distance constraint minimises total sailing distance in the solver: every foundation-to-foundation leg, including the leg that joins one trip to the next, together with trip membership. Harbour transit is not included. A following pass may reverse or reorder trips when that shortens the same total. It has no numeric distance cap. The validator reports the distance in nautical miles, not as a pass/fail limit.
+- An active distance constraint minimises total sailing distance: every foundation-to-foundation leg, including the leg that joins one trip to the next. For larger sets the search re-solves stretches of the sequence, including stretches that cross a trip boundary. Harbour transit is not included. It has no numeric distance cap. The validator reports within-trip, trip-to-trip, and total distance in nautical miles.
 - A soft payload limit can return an overloaded trip. The interface warns about that, and the excess is a soft trade-off.
 - Direct conflicts are blocked before the solver. Indirect conflicts become `INFEASIBLE` with no sequence. Nothing is relaxed automatically.
 - Spreadsheet `Fixed_*` columns are inputs, not automatic constraints.

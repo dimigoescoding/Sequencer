@@ -50,7 +50,7 @@ Named rules in this workbook:
 
 - Spider locations are installed first, in any order among themselves.
 - At most one shallow location is placed on a trip.
-- Infield sailing minimises the straight-line distance from each foundation to the next across the full sequence. The solver chooses which locations share a trip and their order together, from Easting and Northing. The total includes the sail inside a trip and the sail from the end of one trip to the start of the next. Harbour transit is not included.
+- Infield sailing minimises the straight-line distance from each foundation to the next across the full sequence. The total includes the sail inside a trip and the sail from the end of one trip to the start of the next. Harbour transit is not included. On a larger set, the search re-solves stretches of the sequence that cross trip boundaries. The validation table shows the within-trip distance, the trip-to-trip distance, and the total in nautical miles.
 - Jacking difficulty, when active, prefers to keep difficult locations out of the first three trips.
 
 Earliest trip is a constraint you can add. It applies to one location, or to every location matching an attribute. The number is the first trip those locations may be installed. Enter 2 to keep them out of the first trip. For a Yes/No column such as Shallow location, use equals and YES.

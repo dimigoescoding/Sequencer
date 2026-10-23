@@ -45,6 +45,17 @@ def solve_order(
     active = [item for item in constraints if item.active]
     started = time.perf_counter()
     limit = max(vessel.solver_time_limit_seconds, 1)
+    distance = next(
+        (item for item in active if item.constraint_type == "minimise_within_trip_distance"),
+        None,
+    )
+    if distance is not None and len(included) > 12 and limit >= 8:
+        status, objective, order, bound = _search_complete_path(
+            foundations, vessel, active, included, distance, limit, started
+        )
+        runtime = time.perf_counter() - started
+        message = _distance_message(status, active, included, vessel, order, bound)
+        return status, objective, runtime, message, order
     hint = _starting_route(foundations, vessel, active, included, limit, started)
     remaining = max(1, limit - int(time.perf_counter() - started))
     builder = _Builder(included, replace(vessel, solver_time_limit_seconds=remaining))
@@ -85,7 +96,7 @@ def _starting_route(
     remaining = limit - elapsed
     if remaining < 10 or len(included) <= 12:
         return hint
-    warm_limit = max(5, int(remaining) - 5)
+    warm_limit = min(15, max(5, int(remaining) // 5))
     warm = _Builder(included, replace(vessel, solver_time_limit_seconds=warm_limit))
     for constraint in active:
         if constraint.constraint_type == "minimise_within_trip_distance":
@@ -100,6 +111,334 @@ def _starting_route(
     from apps.optimisation.services.between_trips import optimise_trip_connections
 
     return optimise_trip_connections(warm_order, foundations, vessel, active)
+
+
+def _search_complete_path(
+    foundations: list[FoundationInput],
+    vessel: VesselConfig,
+    active: list[ConstraintInput],
+    included: list[FoundationInput],
+    distance: ConstraintInput,
+    limit: int,
+    started: float,
+) -> tuple[str, int | None, list[str], int]:
+    """Minimise the full sailing path by re-solving consecutive stretches."""
+    hint = _starting_route(foundations, vessel, active, included, limit, started)
+    greedy = _greedy_route(foundations, vessel, active, included)
+    order = _shorter_order(included, hint, greedy)
+    if not order:
+        return "UNKNOWN", None, [], 0
+    matrix = [
+        [metres_between(included[left], included[right]) for right in range(len(included))]
+        for left in range(len(included))
+    ]
+    deadline = started + limit
+    capacity = max(vessel.max_foundations_per_trip, 1)
+    widths = [min(len(included), capacity * multiple) for multiple in (1, 2, 3, 4, 5)]
+    widths = [width for width in dict.fromkeys(widths) if width >= 2]
+    shift = 0
+    while time.perf_counter() < deadline - 0.3:
+        for left, width in _longest_leg_windows(order, included, matrix, capacity):
+            if time.perf_counter() >= deadline - 0.3:
+                break
+            right = min(len(included), left + width)
+            slice_limit = min(4.0, deadline - time.perf_counter())
+            if slice_limit < 0.2 or right - left < 2:
+                break
+            candidate = _reoptimize_window(
+                included, vessel, active, distance, order, left, right, matrix, slice_limit
+            )
+            order = _shorter_order(included, order, candidate)
+        for width in widths:
+            step = max(1, min(capacity, width // 2))
+            for left in range(shift % step, len(included) - 1, step):
+                if time.perf_counter() >= deadline - 0.3:
+                    break
+                right = min(len(included), left + width)
+                if right - left < 2:
+                    continue
+                slice_limit = min(3.0 if width <= capacity * 2 else 5.0, deadline - time.perf_counter())
+                if slice_limit < 0.2:
+                    break
+                candidate = _reoptimize_window(
+                    included, vessel, active, distance, order, left, right, matrix, slice_limit
+                )
+                order = _shorter_order(included, order, candidate)
+        shift += max(1, capacity // 2)
+    metres = _sailing_metres(included, order) or 0
+    objective = _reported_objective(foundations, vessel, active, included, distance, order, metres)
+    return "FEASIBLE", objective, order, _relaxation_bound(included, active, matrix)
+
+
+def _reoptimize_window(
+    included: list[FoundationInput],
+    vessel: VesselConfig,
+    active: list[ConstraintInput],
+    distance: ConstraintInput,
+    order: list[str],
+    start: int,
+    end: int,
+    matrix: list[list[int]],
+    time_limit: float,
+) -> list[str]:
+    builder = _Builder(included, replace(vessel, solver_time_limit_seconds=max(1, int(time_limit))))
+    builder.vessel = replace(builder.vessel, solver_time_limit_seconds=time_limit)
+    for constraint in active:
+        if constraint.constraint_type == "minimise_within_trip_distance":
+            builder.add_window_distance(constraint, order, start, end, matrix)
+        else:
+            builder.add_constraint(constraint)
+    builder.fix_outside(order, start, end)
+    builder.hint(order)
+    _status, _objective, candidate = builder.solve()
+    if not candidate or candidate == order:
+        return order
+    from apps.optimisation.services.evaluation import evaluate
+
+    if evaluate(included, vessel, active, candidate).validation_status != "Passed":
+        return order
+    return candidate
+
+
+def _greedy_route(
+    foundations: list[FoundationInput],
+    vessel: VesselConfig,
+    active: list[ConstraintInput],
+    included: list[FoundationInput],
+) -> list[str]:
+    """Nearest feasible foundation at each position. Discarded when a hard rule fails."""
+    if len(included) < 2:
+        return [item.foundation_id for item in included]
+    from apps.optimisation.services.between_trips import _position_checks
+    from apps.optimisation.services.evaluation import evaluate
+
+    checks = _position_checks(foundations, vessel, active)
+    quotas = []
+    for constraint in active:
+        if constraint.enforcement != "hard" or constraint.constraint_type != "maximum_matching_per_trip":
+            continue
+        matched = {
+            item.foundation_id for item in matching_foundations(included, constraint.parameters)
+        }
+        quotas.append((matched, int(constraint.parameters["maximum_count"])))
+    capacity = max(vessel.max_foundations_per_trip, 1)
+    remaining = set(range(len(included)))
+    order: list[str] = []
+    counts: dict[int, dict[int, int]] = {index: {} for index in range(len(quotas))}
+    previous: FoundationInput | None = None
+    for slot in range(len(included)):
+        position = slot + 1
+        trip = slot // capacity + 1
+        best: tuple[int, int] | None = None
+        for index in remaining:
+            item = included[index]
+            if any(not check(item.foundation_id, position, trip) for check in checks):
+                continue
+            blocked = False
+            for quota_index, (matched, maximum) in enumerate(quotas):
+                if item.foundation_id not in matched:
+                    continue
+                if counts[quota_index].get(trip, 0) >= maximum:
+                    blocked = True
+                    break
+            if blocked:
+                continue
+            distance = 0 if previous is None else metres_between(previous, item)
+            choice = (distance, index)
+            if best is None or choice < best:
+                best = choice
+        if best is None:
+            return []
+        chosen = included[best[1]]
+        order.append(chosen.foundation_id)
+        remaining.remove(best[1])
+        for quota_index, (matched, _maximum) in enumerate(quotas):
+            if chosen.foundation_id in matched:
+                counts[quota_index][trip] = counts[quota_index].get(trip, 0) + 1
+        previous = chosen
+    if evaluate(foundations, vessel, active, order).validation_status != "Passed":
+        return []
+    return order
+
+
+def _shorter_order(
+    included: list[FoundationInput], first: list[str], second: list[str]
+) -> list[str]:
+    first_metres = _sailing_metres(included, first) if first else None
+    second_metres = _sailing_metres(included, second) if second else None
+    if second_metres is None:
+        return list(first)
+    if first_metres is None or second_metres < first_metres:
+        return list(second)
+    return list(first)
+
+
+def _reported_objective(
+    foundations: list[FoundationInput],
+    vessel: VesselConfig,
+    active: list[ConstraintInput],
+    included: list[FoundationInput],
+    distance: ConstraintInput,
+    order: list[str],
+    metres: int,
+) -> int:
+    from apps.optimisation.services.evaluation import evaluate
+    from apps.optimisation.services.scaling import scaled_penalty
+
+    review = evaluate(foundations, vessel, active, order)
+    if distance.enforcement == "hard":
+        return metres + review.objective_penalty
+    upper = _leg_upper(included)
+    span = max(upper * max(len(included) - 1, 1), 1)
+    return review.objective_penalty + scaled_penalty(metres, span, distance.severity or 0)
+
+
+def _relaxation_bound(
+    included: list[FoundationInput], active: list[ConstraintInput], matrix: list[list[int]]
+) -> int:
+    """A relaxation of the full sailing path. It is not a feasible sequence."""
+    indexes = list(range(len(included)))
+    bound = _mst(indexes, matrix)
+    prefixes = [
+        item
+        for item in active
+        if item.enforcement == "hard" and item.constraint_type == "matching_installed_first"
+    ]
+    if len(prefixes) != 1:
+        return bound
+    names = {
+        row.foundation_id for row in matching_foundations(included, prefixes[0].parameters)
+    }
+    matched = [index for index, item in enumerate(included) if item.foundation_id in names]
+    if not 2 <= len(matched) <= 16 or len(matched) >= len(included):
+        return bound
+    outside = [index for index in indexes if index not in set(matched)]
+    best = _prefix_path_bound(matched, outside, matrix)
+    if best is None:
+        return bound
+    return max(bound, best)
+
+
+def _prefix_path_bound(
+    matched: list[int], outside: list[int], matrix: list[list[int]]
+) -> int | None:
+    count = len(matched)
+    full = (1 << count) - 1
+    inf = 10**18
+    cost = [[inf] * count for _ in range(full + 1)]
+    for index in range(count):
+        cost[1 << index][index] = 0
+    for mask in range(full + 1):
+        for end in range(count):
+            current = cost[mask][end]
+            if current >= inf:
+                continue
+            for nxt in range(count):
+                if mask & (1 << nxt):
+                    continue
+                candidate = current + matrix[matched[end]][matched[nxt]]
+                nxt_mask = mask | (1 << nxt)
+                if candidate < cost[nxt_mask][nxt]:
+                    cost[nxt_mask][nxt] = candidate
+    rest = _mst(outside, matrix)
+    best: int | None = None
+    for end in range(count):
+        if cost[full][end] >= inf:
+            continue
+        if outside:
+            link = min(matrix[matched[end]][other] for other in outside)
+        else:
+            link = 0
+        total = cost[full][end] + link + rest
+        if best is None or total < best:
+            best = total
+    return best
+
+
+def _mst(indexes: list[int], matrix: list[list[int]]) -> int:
+    if len(indexes) <= 1:
+        return 0
+    chosen = {indexes[0]}
+    pending = set(indexes[1:])
+    total = 0
+    while pending:
+        best_node = None
+        best_distance = None
+        for left in chosen:
+            for right in pending:
+                distance = matrix[left][right]
+                if best_distance is None or distance < best_distance:
+                    best_distance = distance
+                    best_node = right
+        if best_node is None or best_distance is None:
+            break
+        chosen.add(best_node)
+        pending.remove(best_node)
+        total += best_distance
+    return total
+
+
+def _distance_message(
+    status: str,
+    constraints: list[ConstraintInput],
+    included: list[FoundationInput],
+    vessel: VesselConfig,
+    order: list[str],
+    bound: int,
+) -> str:
+    message = _status_message(status, constraints)
+    metres = _sailing_metres(included, order)
+    if metres is None:
+        return message
+    within, links = _split_sailing(included, order, vessel.max_foundations_per_trip)
+    from apps.optimisation.services.routing import format_nautical_miles
+
+    gap = ""
+    if metres > 0 and bound > 0:
+        gap = f" Relaxed lower bound {bound} m. Gap {(metres - bound) / metres:.1%}."
+    return (
+        f"{message} Total sailing {format_nautical_miles(metres)} ({metres} m). "
+        f"Within trips {within} m. Trip to trip {links} m.{gap}"
+    )
+
+
+def _longest_leg_windows(
+    order: list[str],
+    included: list[FoundationInput],
+    matrix: list[list[int]],
+    capacity: int,
+) -> list[tuple[int, int]]:
+    """Windows centred on the longest legs, wide enough to cross a trip boundary."""
+    by_id = {item.foundation_id: index for index, item in enumerate(included)}
+    legs = []
+    for position in range(len(order) - 1):
+        distance = matrix[by_id[order[position]]][by_id[order[position + 1]]]
+        legs.append((distance, position))
+    legs.sort(reverse=True)
+    width = min(len(order), max(capacity * 3, 2))
+    windows = []
+    for _distance, position in legs[:6]:
+        left = max(0, position - width // 2)
+        if left + width > len(order):
+            left = max(0, len(order) - width)
+        windows.append((left, width))
+    return windows
+
+
+def _split_sailing(
+    included: list[FoundationInput], order: list[str], capacity: int
+) -> tuple[int, int]:
+    by_id = {item.foundation_id: item for item in included}
+    within = 0
+    links = 0
+    step = max(capacity, 1)
+    for start in range(0, len(order), step):
+        group = order[start : start + step]
+        for left, right in zip(group, group[1:], strict=False):
+            within += metres_between(by_id[left], by_id[right])
+        if start + step < len(order) and group:
+            links += metres_between(by_id[group[-1]], by_id[order[start + step]])
+    return within, links
 
 
 def _shorter_sailing(
@@ -690,6 +1029,71 @@ class _Builder:
                     cost >= distance * (self.x[origin][left] + self.x[destination][right] - 1)
                 )
         return cost
+
+    def add_window_distance(
+        self,
+        constraint: ConstraintInput,
+        order: list[str],
+        start: int,
+        end: int,
+        matrix: list[list[int]],
+    ) -> None:
+        """Minimise the full-path legs that touch one stretch of the sequence."""
+        if self.n < 2 or end - start < 2:
+            return
+        leg_upper = max(max(row) for row in matrix)
+        if leg_upper == 0:
+            return
+        free = [self.index[order[position]] for position in range(start, end)]
+
+        def side(position: int) -> list[int]:
+            if start <= position < end:
+                return free
+            return [self.index[order[position]]]
+
+        legs = []
+        last = min(self.n - 1, end)
+        for left in range(max(0, start - 1), last):
+            origins = side(left)
+            destinations = side(left + 1)
+            if len(origins) == 1 and len(destinations) == 1:
+                continue
+            legs.append(
+                self._pair_between(left, left + 1, origins, destinations, matrix, leg_upper)
+            )
+        if not legs:
+            return
+        total = sum(legs)
+        if constraint.enforcement == "hard":
+            self.hard_distance_terms.append(total)
+            return
+        self._penalise(total, leg_upper * (self.n - 1), constraint.severity)
+
+    def _pair_between(
+        self,
+        left: int,
+        right: int,
+        origins: list[int],
+        destinations: list[int],
+        matrix: list[list[int]],
+        upper: int,
+    ) -> Any:
+        cost = self._int(0, upper, "leg")
+        for origin in origins:
+            for destination in destinations:
+                distance = matrix[origin][destination]
+                if distance <= 0 or origin == destination:
+                    continue
+                self.model.Add(
+                    cost >= distance * (self.x[origin][left] + self.x[destination][right] - 1)
+                )
+        return cost
+
+    def fix_outside(self, order: list[str], start: int, end: int) -> None:
+        for slot, name in enumerate(order):
+            if start <= slot < end:
+                continue
+            self.model.Add(self.x[self.index[name]][slot] == 1)
 
     def hint(self, order: list[str]) -> None:
         positions = {name: index for index, name in enumerate(order)}
