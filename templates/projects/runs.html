@@ -2,7 +2,7 @@
 {% load sequencer_tags %}
 {% block title %}Runs — {{ project.name }}{% endblock %}
 {% block content %}
-{% include "partials/project_nav.html" with nav="runs" %}
+{% include "partials/project_nav.html" with nav="scenarios" %}
 <h1 class="h3">Optimisation runs</h1>
 {% if not runs %}
   <div class="card"><div class="card-body empty-state">No optimisation runs for this project.</div></div>

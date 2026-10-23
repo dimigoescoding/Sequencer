@@ -1,7 +1,5 @@
 <ul class="nav nav-pills subnav mb-4 flex-nowrap overflow-auto">
   <li class="nav-item"><a class="nav-link {% if nav == 'overview' %}active{% endif %}" href="{% url 'projects:detail' project.pk %}">Overview</a></li>
   <li class="nav-item"><a class="nav-link {% if nav == 'data' %}active{% endif %}" href="{% url 'datasets:index' project.pk %}">Foundation Data</a></li>
-  <li class="nav-item"><a class="nav-link {% if nav == 'vessel' %}active{% endif %}" href="{% url 'projects:vessel' project.pk %}">Vessel Settings</a></li>
   <li class="nav-item"><a class="nav-link {% if nav == 'scenarios' %}active{% endif %}" href="{% url 'scenarios:list' project.pk %}">Scenarios</a></li>
-  <li class="nav-item"><a class="nav-link {% if nav == 'runs' %}active{% endif %}" href="{% url 'projects:runs' project.pk %}">Optimisation Runs</a></li>
 </ul>

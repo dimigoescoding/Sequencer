@@ -6,6 +6,21 @@ document.addEventListener("submit", (event) => {
 });
 
 document.addEventListener("DOMContentLoaded", () => {
+  const generateForm = document.getElementById("generate-form");
+  if (generateForm) {
+    generateForm.addEventListener("submit", () => {
+      const progress = document.getElementById("generate-progress");
+      const button = document.getElementById("generate-button");
+      if (progress) {
+        progress.hidden = false;
+      }
+      window.setTimeout(() => {
+        if (button) {
+          button.disabled = true;
+        }
+      }, 0);
+    });
+  }
   const enforcement = document.querySelector("[name=enforcement]");
   const severity = document.getElementById("severity-field");
   const payloadWarning = document.getElementById("payload-soft-warning");

@@ -1,6 +1,5 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
@@ -35,7 +34,7 @@ def dataset_index(request, project_id: int):
             "form": form,
             "versions": project.dataset_versions.all(),
             "dataset": dataset,
-            "page_obj": _foundation_page(request, dataset),
+            "foundations": _foundations(request, dataset),
             "issues": dataset.issues.all() if dataset else [],
         },
     )
@@ -99,7 +98,7 @@ def dataset_version(request, project_id: int, version_id: int):
         {
             "project": project,
             "dataset": version,
-            "page_obj": _foundation_page(request, version),
+            "foundations": _foundations(request, version),
             "issues": version.issues.all(),
             "scenarios": project.scenarios.select_related("vessel_settings"),
         },
@@ -132,9 +131,9 @@ def dataset_original(request, project_id: int, version_id: int):
     )
 
 
-def _foundation_page(request, dataset):
+def _foundations(request, dataset):
     if dataset is None:
-        return None
+        return []
     rows = dataset.foundations.all()
     query = request.GET.get("q", "").strip()
     if query:
@@ -149,5 +148,4 @@ def _foundation_page(request, dataset):
         sort = "source_row"
     if request.GET.get("dir") == "desc":
         sort = f"-{sort}"
-    rows = rows.order_by(sort, "id")
-    return Paginator(rows, 25).get_page(request.GET.get("page"))
+    return rows.order_by(sort, "id")
