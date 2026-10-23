@@ -105,7 +105,7 @@ def find_conflicts(
             and count > MAX_DISTANCE_FOUNDATIONS
         ):
             conflicts.append(
-                f"{constraint.name} minimises within-trip distance in the solver. "
+                f"{constraint.name} minimises total sailing distance in the solver. "
                 f"MVP 1 does this for up to {MAX_DISTANCE_FOUNDATIONS} included foundations."
             )
             continue

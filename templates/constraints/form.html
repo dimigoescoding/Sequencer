@@ -9,7 +9,7 @@
   <div class="alert alert-warning" id="payload-soft-warning">A soft payload limit permits an overloaded result. The excess is penalised. It is not converted back to a hard limit.</div>
 {% endif %}
 {% if constraint_type == "minimise_within_trip_distance" %}
-  <div class="alert alert-secondary">The solver first minimises total within-trip distance while it chooses which locations share a trip and their order. It then shortens the sail from the end of one trip to the start of the next when the hard rules still hold. There is no numeric cap. A hard rule is minimised ahead of soft preferences. Mark it soft when severity should balance it against other preferences.</div>
+  <div class="alert alert-secondary">The solver minimises total sailing distance: every straight-line leg from one foundation to the next, including the leg that joins one trip to the next. Harbour transit is not included. There is no numeric cap. Trip membership and the route are chosen together. A hard rule is minimised ahead of soft preferences. Mark it soft when severity should balance it against other preferences.</div>
 {% endif %}
 {% if constraint_type == "earliest_sequence" %}
   <div class="alert alert-secondary">Choose one location or an attribute. The number is the first trip those locations may be installed. Enter 2 to keep them out of the first trip. For a Yes/No column such as Shallow location, use equals and YES.</div>

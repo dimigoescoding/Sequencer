@@ -1,8 +1,10 @@
-"""Second step: minimise the sail from the end of one trip to the start of the next.
+"""Polish the full sailing path after the search stops.
 
-Trip membership stays as the within-trip search left it. A trip may be reversed,
-and trips may change places, only when that keeps the within-trip distance and
-still satisfies the active hard constraints.
+The solver already counts every foundation-to-foundation leg, including the
+leg that joins one trip to the next. This pass may reverse a trip or change
+the order of trips when that shortens the same total. It does not change who
+shares a trip, and it keeps the result only when the hard constraints still pass.
+Harbour transit is not included.
 """
 
 from __future__ import annotations
@@ -11,7 +13,7 @@ from collections.abc import Callable
 
 from apps.constraints.services.matching import matching_foundations
 from apps.optimisation.services.evaluation import evaluate
-from apps.optimisation.services.routing import harbour_coordinates, metres_between, metres_xy
+from apps.optimisation.services.routing import metres_between, metres_xy
 from apps.optimisation.services.solver import _bound_targets, _sequence_bound_value
 from apps.optimisation.services.types import ConstraintInput, FoundationInput, VesselConfig
 
@@ -40,8 +42,7 @@ def optimise_trip_connections(
     blocks = [order[index : index + capacity] for index in range(0, len(order), capacity)]
     if len(blocks) > _EXACT_BLOCK_LIMIT:
         return list(order)
-    harbour = harbour_coordinates(active[0].parameters, vessel)
-    oriented = [_orientations(block, by_id, harbour) for block in blocks]
+    oriented = [_orientations(block, by_id, None) for block in blocks]
     allowed = _allowed_slots(oriented, foundations, vessel, constraints, len(order))
     if any(index not in allowed[index][0] for index, _block in enumerate(blocks)):
         return list(order)

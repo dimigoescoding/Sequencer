@@ -210,14 +210,6 @@ class ConstraintForm(forms.Form):
         if kind == "difficulty_progression":
             self.fields["applicable_start_trip"] = forms.IntegerField(min_value=1, initial=1)
             self.fields["applicable_end_trip"] = forms.IntegerField(min_value=1, initial=1)
-        if kind == "minimise_within_trip_distance":
-            self.fields["include_harbour_legs"] = forms.BooleanField(required=False)
-            self.fields["harbour_easting_m"] = forms.DecimalField(
-                required=False, decimal_places=3, max_digits=16
-            )
-            self.fields["harbour_northing_m"] = forms.DecimalField(
-                required=False, decimal_places=3, max_digits=16
-            )
 
     def clean(self):
         cleaned = super().clean()
@@ -335,12 +327,7 @@ class ConstraintForm(forms.Form):
                 "direction": cleaned["direction"],
             }
         if kind == "minimise_within_trip_distance":
-            parameters = {"include_harbour_legs": bool(cleaned.get("include_harbour_legs"))}
-            if cleaned.get("harbour_easting_m") is not None:
-                parameters["harbour_easting_m"] = format(cleaned["harbour_easting_m"], "f")
-            if cleaned.get("harbour_northing_m") is not None:
-                parameters["harbour_northing_m"] = format(cleaned["harbour_northing_m"], "f")
-            return parameters
+            return {"include_harbour_legs": False}
         if kind in {"matching_installed_first", "avoid_matching_in_first_trips"}:
             parameters = self._rule(cleaned)
             if kind == "avoid_matching_in_first_trips":

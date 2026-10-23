@@ -8,9 +8,9 @@ upper bound M for that raw value on this dataset. The objective contribution is
 so every soft constraint is mapped onto 0..1000 before severity is applied.
 A severity of 100 is exactly twice a severity of 50 for the same raw ratio.
 
-A soft within-trip distance term uses this same formula, with the raw value in
-metres. A hard within-trip distance term is the total metres, weighted so that
-it is minimised ahead of every soft penalty.
+A soft sailing-distance term uses this same formula, with the raw value in
+metres. A hard sailing-distance term is the total metres, weighted so that
+it is minimised ahead of every soft penalty. Harbour transit is not included.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from decimal import ROUND_HALF_UP, Decimal
 NORM = 1000
 SOLVER_SEED = 1
 # Sized for one Render Free web instance: 512 MB RAM and 0.1 CPU.
-# The supplied workbook has 50 locations and an active within-trip distance rule.
+# The supplied workbook has 50 locations and an active sailing-distance rule.
 MAX_INCLUDED_FOUNDATIONS = 60
 MAX_DISTANCE_FOUNDATIONS = 60
 # The generate request stays open until the solver stops, so Gunicorn's timeout is longer than this.

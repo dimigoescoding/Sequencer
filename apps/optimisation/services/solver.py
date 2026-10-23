@@ -27,7 +27,7 @@ from apps.optimisation.services.metrics import (
     ordering_pairs,
     window_pair_count,
 )
-from apps.optimisation.services.routing import harbour_coordinates, metres_between, metres_xy
+from apps.optimisation.services.routing import metres_between
 from apps.optimisation.services.scaling import (
     NORM,
     SOLVER_SEED,
@@ -43,27 +43,121 @@ def solve_order(
 ) -> tuple[str, int | None, float, str, list[str]]:
     included = [item for item in foundations if item.include]
     active = [item for item in constraints if item.active]
-    builder = _Builder(included, vessel)
+    started = time.perf_counter()
+    limit = max(vessel.solver_time_limit_seconds, 1)
+    hint = _starting_route(foundations, vessel, active, included, limit, started)
+    remaining = max(1, limit - int(time.perf_counter() - started))
+    builder = _Builder(included, replace(vessel, solver_time_limit_seconds=remaining))
     for constraint in active:
         builder.add_constraint(constraint)
-    started = time.perf_counter()
-    if any(item.constraint_type == "minimise_within_trip_distance" for item in active):
-        structural = [
-            item for item in active if item.constraint_type != "minimise_within_trip_distance"
-        ]
-        hint_vessel = replace(
-            vessel,
-            solver_time_limit_seconds=min(5, vessel.solver_time_limit_seconds),
-        )
-        _status, _objective, _runtime, _message, hint = solve_order(
-            foundations, hint_vessel, structural
-        )
-        if hint:
-            builder.hint(hint)
+    if hint:
+        builder.hint(hint)
     status, objective, order = builder.solve()
+    status, objective, order = _shorter_sailing(
+        foundations, vessel, active, included, hint, status, objective, order
+    )
     runtime = time.perf_counter() - started
     message = _status_message(status, active)
     return status, objective, runtime, message, order
+
+
+def _starting_route(
+    foundations: list[FoundationInput],
+    vessel: VesselConfig,
+    active: list[ConstraintInput],
+    included: list[FoundationInput],
+    limit: int,
+    started: float,
+) -> list[str]:
+    """Find a feasible route before the sailing-distance search starts."""
+    if not any(item.constraint_type == "minimise_within_trip_distance" for item in active):
+        return []
+    structural = [
+        item for item in active if item.constraint_type != "minimise_within_trip_distance"
+    ]
+    hint_limit = min(5, limit)
+    _status, _objective, _runtime, _message, hint = solve_order(
+        foundations,
+        replace(vessel, solver_time_limit_seconds=hint_limit),
+        structural,
+    )
+    elapsed = time.perf_counter() - started
+    remaining = limit - elapsed
+    if remaining < 10 or len(included) <= 12:
+        return hint
+    warm_limit = max(5, int(remaining) - 5)
+    warm = _Builder(included, replace(vessel, solver_time_limit_seconds=warm_limit))
+    for constraint in active:
+        if constraint.constraint_type == "minimise_within_trip_distance":
+            warm.add_within_trip_start(constraint)
+        else:
+            warm.add_constraint(constraint)
+    if hint:
+        warm.hint(hint)
+    _status, _objective, warm_order = warm.solve()
+    if not warm_order:
+        return hint
+    from apps.optimisation.services.between_trips import optimise_trip_connections
+
+    return optimise_trip_connections(warm_order, foundations, vessel, active)
+
+
+def _shorter_sailing(
+    foundations: list[FoundationInput],
+    vessel: VesselConfig,
+    active: list[ConstraintInput],
+    included: list[FoundationInput],
+    hint: list[str],
+    status: str,
+    objective: int | None,
+    order: list[str],
+) -> tuple[str, int | None, list[str]]:
+    """Keep the feasible route with the shorter full sailing distance."""
+    if not hint or hint == order or len(included) <= 12:
+        return status, objective, order
+    from apps.optimisation.services.evaluation import evaluate
+    from apps.optimisation.services.scaling import scaled_penalty
+
+    review = evaluate(foundations, vessel, active, hint)
+    if review.validation_status != "Passed":
+        return status, objective, order
+    hint_metres = _sailing_metres(included, hint)
+    order_metres = _sailing_metres(included, order) if order else None
+    if hint_metres is None or (order_metres is not None and hint_metres >= order_metres):
+        return status, objective, order
+    distance = next(
+        item for item in active if item.constraint_type == "minimise_within_trip_distance"
+    )
+    if distance.enforcement == "hard":
+        hint_objective = hint_metres + review.objective_penalty
+    else:
+        upper = _leg_upper(included)
+        span = max(upper * max(len(included) - 1, 1), 1)
+        hint_objective = review.objective_penalty + scaled_penalty(
+            hint_metres, span, distance.severity or 0
+        )
+    return "FEASIBLE", hint_objective, hint
+
+
+def _sailing_metres(included: list[FoundationInput], order: list[str]) -> int | None:
+    if len(order) != len(included):
+        return None
+    by_id = {item.foundation_id: item for item in included}
+    if any(name not in by_id for name in order):
+        return None
+    points = [by_id[name] for name in order]
+    return sum(metres_between(left, right) for left, right in zip(points, points[1:], strict=False))
+
+
+def _leg_upper(included: list[FoundationInput]) -> int:
+    if len(included) < 2:
+        return 0
+    return max(
+        metres_between(left, right)
+        for left in included
+        for right in included
+        if left.foundation_id != right.foundation_id
+    )
 
 
 def _status_message(status: str, constraints: list[ConstraintInput]) -> str:
@@ -175,6 +269,30 @@ class _Builder:
         }.get(kind)
         if handler:
             handler(constraint)
+
+    def add_within_trip_start(self, constraint: ConstraintInput) -> None:
+        """Seed the search with a short route inside trips. The objective stays the full path."""
+        if self.n < 2:
+            return
+        matrix = [
+            [metres_between(self.included[left], self.included[right]) for right in range(self.n)]
+            for left in range(self.n)
+        ]
+        leg_upper = max(max(row) for row in matrix)
+        if leg_upper == 0:
+            return
+        legs: list[Any] = []
+        for trip in range(1, self.trips + 1):
+            positions = self._trip_positions(trip)
+            for left, right in zip(positions, positions[1:], strict=False):
+                legs.append(self._pair_metres(left, right, matrix, leg_upper))
+        if not legs:
+            return
+        total = sum(legs)
+        if constraint.enforcement == "hard":
+            self.hard_distance_terms.append(total)
+            return
+        self._penalise(total, leg_upper * len(legs), constraint.severity)
 
     def _penalise(self, raw: Any, max_raw: int, severity: int | None) -> None:
         if not severity or max_raw <= 0:
@@ -539,46 +657,25 @@ class _Builder:
         self._penalise(sum(violations), max(limit * len(indexes), 1), constraint.severity)
 
     def _distance(self, constraint: ConstraintInput) -> None:
-        """Minimise total within-trip metres while choosing membership and order."""
-        if self.n == 0:
+        """Minimise every consecutive foundation-to-foundation leg. Harbour is excluded."""
+        if self.n < 2:
             return
         matrix = [
             [metres_between(self.included[left], self.included[right]) for right in range(self.n)]
             for left in range(self.n)
         ]
-        harbour = harbour_coordinates(constraint.parameters, self.vessel)
-        harbour_metres = (
-            [
-                metres_xy(item.easting_m, item.northing_m, harbour[0], harbour[1])
-                for item in self.included
-            ]
-            if harbour is not None
-            else []
-        )
-        leg_upper = max(max(row) for row in matrix) if matrix else 0
-        harbour_upper = max(harbour_metres) if harbour_metres else 0
-        if leg_upper == 0 and harbour_upper == 0:
+        leg_upper = max(max(row) for row in matrix)
+        if leg_upper == 0:
             return
-        legs: list[Any] = []
-        leg_count = 0
-        harbour_count = 0
-        for trip in range(1, self.trips + 1):
-            positions = self._trip_positions(trip)
-            for left, right in zip(positions, positions[1:], strict=False):
-                legs.append(self._pair_metres(left, right, matrix, leg_upper))
-                leg_count += 1
-            if harbour_metres and positions:
-                legs.append(self._node_metres(positions[0], harbour_metres))
-                legs.append(self._node_metres(positions[-1], harbour_metres))
-                harbour_count += 2
-        if not legs:
-            return
+        legs = [
+            self._pair_metres(position, position + 1, matrix, leg_upper)
+            for position in range(self.n - 1)
+        ]
         total = sum(legs)
         if constraint.enforcement == "hard":
             self.hard_distance_terms.append(total)
             return
-        max_raw = leg_upper * leg_count + harbour_upper * harbour_count
-        self._penalise(total, max_raw, constraint.severity)
+        self._penalise(total, leg_upper * (self.n - 1), constraint.severity)
 
     def _pair_metres(self, left: int, right: int, matrix: list[list[int]], upper: int) -> Any:
         # One origin occupies `left` and one destination occupies `right`.
@@ -593,11 +690,6 @@ class _Builder:
                     cost >= distance * (self.x[origin][left] + self.x[destination][right] - 1)
                 )
         return cost
-
-    def _node_metres(self, position: int, values: list[int]) -> Any:
-        return sum(
-            values[foundation] * self.x[foundation][position] for foundation in range(self.n)
-        )
 
     def hint(self, order: list[str]) -> None:
         positions = {name: index for index, name in enumerate(order)}
@@ -623,6 +715,7 @@ class _Builder:
         solver.parameters.max_time_in_seconds = float(self.vessel.solver_time_limit_seconds)
         solver.parameters.random_seed = SOLVER_SEED
         solver.parameters.num_search_workers = 1
+        solver.parameters.repair_hint = True
         code = solver.Solve(self.model)
         status = {
             cp_model.OPTIMAL: "OPTIMAL",

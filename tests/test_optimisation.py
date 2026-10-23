@@ -274,11 +274,12 @@ def test_solver_puts_nearby_locations_on_the_same_trip():
     limits = vessel(max_foundations_per_trip=2)
     status, objective, _runtime, _message, order = solve_order(foundations, limits, [rule])
     assert status == "OPTIMAL"
-    assert objective == 20
+    assert objective == 120
     assert {frozenset(order[:2]), frozenset(order[2:])} == {
         frozenset({"A", "B"}),
         frozenset({"C", "D"}),
     }
+    assert _path(foundations, order) == 120
 
 
 def test_distance_objective_keeps_a_hard_position_rule():
@@ -331,6 +332,22 @@ def test_workbook_distance_is_the_solver_objective():
         )
         for item in parsed.constraints
     ]
+    rules.append(
+        ConstraintInput(
+            name="No shallow in trip 1",
+            constraint_type="earliest_sequence",
+            parameters={
+                "attribute": "Shallow location",
+                "operator": "equals",
+                "value": "YES",
+                "earliest_trip": 2,
+            },
+            enforcement="hard",
+            active=True,
+            severity=None,
+            description="",
+        )
+    )
     plain = [item for item in rules if item.constraint_type != "minimise_within_trip_distance"]
     limits = vessel(max_foundations_per_trip=4, solver_time_limit_seconds=20)
     _status, _objective, _runtime, _message, baseline = solve_order(
@@ -343,9 +360,7 @@ def test_workbook_distance_is_the_solver_objective():
     assert objective is not None and objective > 0
     assert elapsed < 30
     assert len(order) == 50
-    assert _within_trip_path(parsed.foundations, order, 4) < _within_trip_path(
-        parsed.foundations, baseline, 4
-    )
+    assert _path(parsed.foundations, order) < _path(parsed.foundations, baseline)
     review = evaluate(parsed.foundations, limits, rules, order)
     assert review.validation_status == "Passed"
     spiders = {
@@ -359,6 +374,7 @@ def test_workbook_distance_is_the_solver_objective():
         for item in parsed.foundations
         if item.attributes.get("Shallow location") is True
     }
+    assert not any(name in shallow for name in order[:4])
     for start in range(0, 50, 4):
         group = order[start : start + 4]
         assert len([name for name in group if name in shallow]) <= 1
@@ -429,7 +445,7 @@ def test_earliest_trip_keeps_matching_locations_out_of_earlier_trips():
     assert joint_status == "OPTIMAL"
     assert set(joint_order[:2]) == {"A", "C"}
     assert set(joint_order[2:]) == {"B", "D"}
-    assert joint_objective == 200
+    assert joint_objective == 201
 
 
 def test_earliest_trip_keeps_one_location_out_of_the_first_trip():

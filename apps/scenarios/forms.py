@@ -33,8 +33,8 @@ class VesselSettingsForm(forms.ModelForm):
             "base_maximum_trip_payload_t": "Optional reference only. Add a payload constraint to enforce a limit. No default is assumed.",
             "solver_time_limit_seconds": "Stops the solver after this many seconds (1–600). A feasible result is not labelled optimal unless OR-Tools proves it.",
             "transit_speed_knots": "Recorded for audit. MVP 1 does not calculate transit time.",
-            "harbour_easting_m": "Leave blank unless a distance constraint should use harbour legs. No default harbour is assumed.",
-            "harbour_northing_m": "Leave blank unless a distance constraint should use harbour legs.",
+            "harbour_easting_m": "Stored with the scenario. Harbour transit is not part of the sailing-distance objective.",
+            "harbour_northing_m": "Stored with the scenario. Harbour transit is not part of the sailing-distance objective.",
         }
 
     def __init__(self, *args, **kwargs) -> None:

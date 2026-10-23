@@ -89,11 +89,12 @@ CONSTRAINT_TYPES: dict[str, dict[str, str]] = {
         ),
     },
     "minimise_within_trip_distance": {
-        "label": "Minimise within-trip distance",
+        "label": "Minimise total sailing distance",
         "summary": (
-            "Minimise the total straight-line distance inside trips. The solver chooses "
-            "which locations share a trip and the route together. Harbour legs are included "
-            "only when you enable them and supply harbour coordinates. No map is drawn."
+            "Minimise the straight-line distance from each foundation to the next across "
+            "the full sequence. That includes the sail inside a trip and the sail from the "
+            "end of one trip to the start of the next. Harbour transit is not included. "
+            "The solver chooses trip membership and the route together. No map is drawn."
         ),
     },
     "matching_installed_first": {
