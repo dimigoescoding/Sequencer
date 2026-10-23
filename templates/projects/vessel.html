@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Vessel settings — {{ project.name }}{% endblock %}
 {% block content %}
-{% include "partials/project_nav.html" with nav="vessel" %}
+{% include "partials/project_nav.html" with nav="scenarios" %}
 <h1 class="h3">Vessel settings</h1>
 <p class="text-secondary">Each scenario keeps the settings loaded from its workbook. Open a scenario to change those values.</p>
 {% if not scenarios %}

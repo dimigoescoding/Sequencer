@@ -16,17 +16,17 @@
         </div>
         <div class="col-md-2"><button class="btn btn-outline-primary" type="submit">Filter</button></div>
       </form>
-      {% if not page_obj.object_list %}
+      {% if not foundations %}
         <p class="empty-state">No foundations match this filter.</p>
       {% else %}
-        <div class="table-responsive">
-          <table class="table table-sm table-striped">
+        <div class="foundation-scroll">
+          <table class="table table-sm table-striped mb-0">
             <thead>
               <tr>
-                <th><a href="{% querystring sort='source_row' dir='asc' page=1 %}">Row</a></th>
-                <th><a href="{% querystring sort='foundation_id' dir='asc' page=1 %}">WTG ID</a></th>
+                <th><a href="{% querystring sort='source_row' dir='asc' page='' %}">Row</a></th>
+                <th><a href="{% querystring sort='foundation_id' dir='asc' page='' %}">WTG ID</a></th>
                 <th>Structure</th>
-                <th><a href="{% querystring sort='weight_t' dir='asc' page=1 %}">Weight [t]</a></th>
+                <th><a href="{% querystring sort='weight_t' dir='asc' page='' %}">Weight [t]</a></th>
                 <th>Spider</th>
                 <th>Shallow</th>
                 <th>Jacking</th>
@@ -37,7 +37,7 @@
               </tr>
             </thead>
             <tbody>
-              {% for row in page_obj %}
+              {% for row in foundations %}
                 <tr>
                   <td>{{ row.source_row|default:"—" }}</td>
                   <td>{{ row.foundation_id }}</td>
@@ -55,7 +55,6 @@
             </tbody>
           </table>
         </div>
-        {% include "partials/pagination.html" %}
       {% endif %}
     {% endif %}
   </div>

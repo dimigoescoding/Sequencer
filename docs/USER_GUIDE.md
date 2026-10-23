@@ -16,6 +16,7 @@ Sequencer stores the constraints you enter. It does not suggest a methodology, f
 3. Upload an `.xlsx` workbook with `Information`, `Constraints`, and `Settings` sheets.
 4. The page confirms that the upload is stored and lists the foundation, constraint, and setting counts. The new version is kept even when it has errors, together with the original file. Versions are not edited in place. Upload a corrected workbook to create the next version.
 5. Read the error and warning lists. Activate a version only when it has no critical errors.
+6. The foundation table lists every row. Scroll inside the table to move through them.
 
 Critical errors include a missing sheet or mandatory column, a missing or duplicate WTG ID, an invalid Yes/No value, a non-positive weight, a coordinate that is not a number, or a soft constraint without a severity. A formula with no value stored in the file is an error. Sequencer does not calculate formulas. A value already stored by Excel is read and reported as a warning.
 
@@ -65,7 +66,7 @@ Soft constraints add a penalty. The result can violate them. The validation tab 
 
 Open Generate Sequence. Direct conflicts are listed first, for example one foundation fixed to two trips, a position above vessel capacity, a hard group that is also a hard separation, or a fixed group that already exceeds a hard payload limit. The solver does not start until those messages are clear.
 
-Submit the form to run OR-Tools. Status values:
+Submit the form to run OR-Tools. A loading bar stays on the page until the solver finishes. Status values:
 
 - `OPTIMAL` — proven best scaled objective.
 - `FEASIBLE` — a valid sequence was found before the time limit. It is not claimed to be optimal.
