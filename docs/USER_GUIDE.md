@@ -50,7 +50,7 @@ Named rules in this workbook:
 
 - Spider locations are installed first, in any order among themselves.
 - At most one shallow location is placed on a trip.
-- Infield sailing minimises the straight-line distance inside trips. The solver chooses which locations share a trip and their order together, from Easting and Northing, without harbour legs.
+- Infield sailing first minimises the straight-line distance inside trips. The solver chooses which locations share a trip and their order together, from Easting and Northing, without harbour legs. It then shortens the sail from the end of one trip to the start of the next when that does not break a hard constraint.
 - Jacking difficulty, when active, prefers to keep difficult locations out of the first three trips.
 
 Earliest trip is a constraint you can add. It applies to one location, or to every location matching an attribute. The number is the first trip those locations may be installed. Enter 2 to keep them out of the first trip. For a Yes/No column such as Shallow location, use equals and YES.

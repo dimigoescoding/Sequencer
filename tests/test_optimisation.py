@@ -516,6 +516,133 @@ def test_earliest_trip_form_saves_the_attribute_and_ignores_a_location():
     assert location.cleaned_data["parameters"] == {"foundation_id": "B", "earliest_trip": 2}
 
 
+def test_second_step_reverses_a_trip_to_shorten_the_link():
+    from apps.optimisation.services.between_trips import optimise_trip_connections
+
+    foundations = [
+        foundation("A", easting_m=Decimal(0), northing_m=Decimal(0)),
+        foundation("B", easting_m=Decimal(3), northing_m=Decimal(0)),
+        foundation("D", easting_m=Decimal(8), northing_m=Decimal(0)),
+        foundation("C", easting_m=Decimal(4), northing_m=Decimal(0)),
+    ]
+    rules = [
+        constraint(
+            "Infield sailing optimization FOU",
+            "minimise_within_trip_distance",
+            {"include_harbour_legs": False},
+        )
+    ]
+    limits = vessel(max_foundations_per_trip=2)
+    original = ["A", "B", "D", "C"]
+    order = optimise_trip_connections(original, foundations, limits, rules)
+    assert {frozenset(order[:2]), frozenset(order[2:])} == {
+        frozenset({"A", "B"}),
+        frozenset({"C", "D"}),
+    }
+    assert _within_trip_path(foundations, order, 2) == _within_trip_path(foundations, original, 2)
+    assert _path(foundations, order) == 8
+    assert _path(foundations, order) < _path(foundations, original)
+
+
+def test_second_step_keeps_a_shallow_location_out_of_trip_one():
+    from apps.optimisation.services.between_trips import optimise_trip_connections
+
+    foundations = [
+        foundation(
+            "A",
+            easting_m=Decimal(0),
+            northing_m=Decimal(0),
+            attributes={"Shallow location": False},
+        ),
+        foundation(
+            "B",
+            easting_m=Decimal(10),
+            northing_m=Decimal(0),
+            attributes={"Shallow location": False},
+        ),
+        foundation(
+            "C",
+            easting_m=Decimal(1),
+            northing_m=Decimal(0),
+            attributes={"Shallow location": True},
+        ),
+        foundation(
+            "D",
+            easting_m=Decimal(2),
+            northing_m=Decimal(0),
+            attributes={"Shallow location": False},
+        ),
+    ]
+    rules = [
+        constraint(
+            "No shallow in trip 1",
+            "earliest_sequence",
+            {
+                "attribute": "Shallow location",
+                "operator": "equals",
+                "value": "YES",
+                "earliest_trip": 2,
+            },
+        ),
+        constraint(
+            "Infield sailing optimization FOU",
+            "minimise_within_trip_distance",
+            {"include_harbour_legs": False},
+        ),
+    ]
+    limits = vessel(max_foundations_per_trip=2)
+    order = optimise_trip_connections(["A", "B", "C", "D"], foundations, limits, rules)
+    assert order == ["B", "A", "C", "D"]
+    assert evaluate(foundations, limits, rules, order).validation_status == "Passed"
+
+
+def test_second_step_does_not_reverse_a_spider_prefix():
+    from apps.optimisation.services.between_trips import optimise_trip_connections
+
+    foundations = [
+        foundation(
+            "S",
+            easting_m=Decimal(0),
+            northing_m=Decimal(0),
+            attributes={"Spider location": True},
+        ),
+        foundation(
+            "N",
+            easting_m=Decimal(1),
+            northing_m=Decimal(0),
+            attributes={"Spider location": False},
+        ),
+        foundation(
+            "Y",
+            easting_m=Decimal(10),
+            northing_m=Decimal(0),
+            attributes={"Spider location": False},
+        ),
+        foundation(
+            "X",
+            easting_m=Decimal(3),
+            northing_m=Decimal(0),
+            attributes={"Spider location": False},
+        ),
+    ]
+    rules = [
+        constraint(
+            "Spider locations FOU",
+            "matching_installed_first",
+            {"attribute": "Spider location", "operator": "equals", "value": "YES"},
+        ),
+        constraint(
+            "Infield sailing optimization FOU",
+            "minimise_within_trip_distance",
+            {"include_harbour_legs": False},
+        ),
+    ]
+    limits = vessel(max_foundations_per_trip=2)
+    order = optimise_trip_connections(["S", "N", "Y", "X"], foundations, limits, rules)
+    assert order == ["S", "N", "X", "Y"]
+    assert evaluate(foundations, limits, rules, order).validation_status == "Passed"
+
+
 def _within_trip_path(foundations, names: list[str], capacity: int) -> int:
     total = 0
     for start in range(0, len(names), capacity):

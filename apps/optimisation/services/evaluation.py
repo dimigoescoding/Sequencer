@@ -1023,6 +1023,11 @@ def _avoid_first_trips(constraint, placements, vessel, add, governing, penalties
 def _distance(constraint, placements, vessel, add, governing):
     _mark(governing, [item.foundation.foundation_id for item in placements], constraint.name)
     distance = _route_distance(placements, constraint, vessel)
+    ordered = sorted(placements, key=lambda item: item.sequence)
+    sailing = sum(
+        metres_between(left.foundation, right.foundation)
+        for left, right in zip(ordered, ordered[1:], strict=False)
+    )
     add(
         "Within-trip distance",
         constraint.name,
@@ -1030,9 +1035,20 @@ def _distance(constraint, placements, vessel, add, governing):
         f"{distance} m",
         "Information",
         [],
-        "Total within-trip distance is the solver objective. Trip membership and the route "
-        "are chosen together. There is no maximum distance, so the metres are information "
+        "Total within-trip distance is the first solver objective. Trip membership and the "
+        "route are chosen together. There is no maximum distance, so the metres are information "
         "and are not a pass or fail limit.",
+    )
+    add(
+        "Total sailing distance",
+        constraint.name,
+        "Within-trip distance plus the link from each trip to the next",
+        f"{sailing} m",
+        "Information",
+        [],
+        "After the within-trip search, trips may be reversed or reordered when that shortens "
+        "the sail from the end of one trip to the start of the next and the hard constraints "
+        "still hold. Harbour legs are not part of this total.",
     )
     return _empty()
 

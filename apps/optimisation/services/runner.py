@@ -12,6 +12,7 @@ from django.utils import timezone
 from apps.constraints.models import Constraint
 from apps.datasets.services.mapping import to_foundation_input
 from apps.optimisation.models import OptimisationRun, SequenceResult, TripResult, ValidationResult
+from apps.optimisation.services.between_trips import optimise_trip_connections
 from apps.optimisation.services.conflicts import find_conflicts
 from apps.optimisation.services.evaluation import evaluate
 from apps.optimisation.services.scaling import MAX_SOLVER_TIME_LIMIT_SECONDS, SOLVER_SEED
@@ -107,6 +108,8 @@ def _execute(scenario: Scenario) -> OptimisationRun:
     started = timezone.now()
     try:
         status, objective, runtime, message, order = solve_order(foundations, vessel, constraints)
+        if order:
+            order = optimise_trip_connections(order, foundations, vessel, constraints)
     except Exception as exc:
         status, objective, runtime, message, order = (
             "ERROR",

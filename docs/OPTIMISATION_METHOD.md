@@ -21,7 +21,9 @@ vessel_position = ((sequence_position - 1) mod N) + 1
 
 The number of trips is `ceil(included_count / N)`. Every trip except the last is full. The last trip is short only when `allow_partial_final_trip` is enabled. If it is disabled and the count is not a multiple of `N`, pre-solver validation blocks the run.
 
-When a within-trip distance constraint is active, total within-trip distance is part of the CP-SAT objective. The same search chooses which locations share a trip and the order of those locations. The route is not rearranged after the trips have been fixed. A feasible assignment found without the distance term is given to the search as a starting hint. The search may still move a location into another trip.
+When a within-trip distance constraint is active, total within-trip distance is part of the CP-SAT objective. The same search chooses which locations share a trip and the order of those locations. A feasible assignment found without the distance term is given to the search as a starting hint. The search may still move a location into another trip.
+
+A second step then minimises the sail from the last location of one trip to the first location of the next. It may reverse a trip or change the order of trips. It does not change which locations share a trip, and it keeps the result only when the within-trip distance does not increase and the active hard constraints still pass.
 
 ## Hard constraints
 
@@ -39,7 +41,7 @@ Hard constraints are added with `model.Add`. They are never rewritten as penalti
 | Maximum or minimum count | Matching foundations per applicable trip stay inside the count. |
 | Same trip or separate trip | `trip_of` is equal, or pairwise unequal. |
 | Attribute ordering, delivery alignment, difficulty progression | The measured violation must be zero. |
-| Minimise within-trip distance | The objective includes the sum of Euclidean legs between consecutive positions in the same trip, plus harbour legs when enabled. A hard term is weighted ahead of soft penalties. A soft term is scaled by severity. There is no numeric distance cap. The validator reports the metres as information. |
+| Minimise within-trip distance | The objective includes the sum of Euclidean legs between consecutive positions in the same trip, plus harbour legs when enabled. A hard term is weighted ahead of soft penalties. A soft term is scaled by severity. A second step then minimises the links between trips without changing trip membership. There is no numeric distance cap. The validator reports both distances as information. |
 
 Attribute filters are resolved from the uploaded values before the model is built. They are not decision-dependent expressions, and they are not executable code.
 
