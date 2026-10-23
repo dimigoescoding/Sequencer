@@ -160,6 +160,31 @@
     draw();
   };
   document.getElementById("timelapse-slider").max = String(data.length);
+  var stage = document.getElementById("timelapse-stage");
+  var fullscreenButton = document.getElementById("timelapse-fullscreen");
+  function fullscreenElement() {
+    return document.fullscreenElement || document.webkitFullscreenElement || null;
+  }
+  function syncFullscreenButton() {
+    fullscreenButton.textContent = fullscreenElement() === stage ? "Exit full screen" : "Full screen";
+  }
+  fullscreenButton.onclick = function () {
+    if (fullscreenElement() === stage) {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      }
+      return;
+    }
+    if (stage.requestFullscreen) {
+      stage.requestFullscreen();
+    } else if (stage.webkitRequestFullscreen) {
+      stage.webkitRequestFullscreen();
+    }
+  };
+  document.addEventListener("fullscreenchange", syncFullscreenButton);
+  document.addEventListener("webkitfullscreenchange", syncFullscreenButton);
   draw();
   schedule();
 })();

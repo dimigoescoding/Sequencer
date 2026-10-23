@@ -69,24 +69,27 @@
         <h2 class="h5 mb-1">Installation sequence</h2>
         <p class="small text-secondary mb-0">Easting/Northing · equal scale · no harbour or inter-trip legs{% if timelapse.within_trip %} · within-trip {{ timelapse.within_trip }}{% endif %}</p>
       </div>
-      <div id="timelapse-status" class="fw-bold"></div>
     </div>
     {% if timelapse.frames %}
-      <svg id="timelapse-map" class="timelapse-map" viewBox="0 0 1500 860" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Installation sequence on easting and northing axes"></svg>
-      <div class="timelapse-controls">
-        <button type="button" id="timelapse-play">Pause</button>
-        <button type="button" id="timelapse-prev">◀ Step</button>
-        <button type="button" id="timelapse-next">Step ▶</button>
-        <label>Speed
-          <select id="timelapse-speed">
-            <option value="1200">0.5×</option>
-            <option value="600" selected>1×</option>
-            <option value="300">2×</option>
-            <option value="150">4×</option>
-          </select>
-        </label>
-        <input id="timelapse-slider" type="range" min="1" max="{{ timelapse.frames|length }}" value="1">
-        <span class="small text-secondary">Completed routes fade automatically.</span>
+      <div id="timelapse-stage" class="timelapse-stage">
+        <div id="timelapse-status" class="fw-bold mb-2"></div>
+        <svg id="timelapse-map" class="timelapse-map" viewBox="0 0 1500 860" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Installation sequence on easting and northing axes"></svg>
+        <div class="timelapse-controls">
+          <button type="button" id="timelapse-play">Pause</button>
+          <button type="button" id="timelapse-prev">◀ Step</button>
+          <button type="button" id="timelapse-next">Step ▶</button>
+          <label>Speed
+            <select id="timelapse-speed">
+              <option value="1200">0.5×</option>
+              <option value="600" selected>1×</option>
+              <option value="300">2×</option>
+              <option value="150">4×</option>
+            </select>
+          </label>
+          <input id="timelapse-slider" type="range" min="1" max="{{ timelapse.frames|length }}" value="1">
+          <span class="small text-secondary">Completed routes fade automatically.</span>
+          <button type="button" id="timelapse-fullscreen">Full screen</button>
+        </div>
       </div>
       {{ timelapse.frames|json_script:"timelapse-data" }}
       <script src="{% static 'js/timelapse.js' %}"></script>
