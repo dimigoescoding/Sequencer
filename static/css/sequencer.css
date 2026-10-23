@@ -36,6 +36,51 @@ body {
   white-space: nowrap;
 }
 
+.timelapse-map {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #fbfcfe;
+  border: 1px solid var(--sq-line);
+  border-radius: 8px;
+}
+
+.timelapse-map .grid { stroke: #dce3ea; stroke-width: 1; }
+.timelapse-map .tick { fill: #52606d; font-size: 11px; }
+.timelapse-map .label {
+  font-size: 10px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: white;
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  fill: #172033;
+}
+.timelapse-map .point { stroke: white; stroke-width: 2; }
+.timelapse-map .route { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+
+.timelapse-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 0 4px;
+  flex-wrap: wrap;
+}
+
+.timelapse-controls button,
+.timelapse-controls select {
+  padding: 7px 12px;
+  border: 1px solid #aab6c2;
+  border-radius: 7px;
+  background: white;
+  font-weight: 600;
+}
+
+.timelapse-controls input[type="range"] {
+  flex: 1;
+  min-width: 180px;
+}
+
 .empty-state {
   padding: 2rem 1rem;
   color: #52606d;
