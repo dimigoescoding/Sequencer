@@ -21,7 +21,9 @@ vessel_position = ((sequence_position - 1) mod N) + 1
 
 The number of trips is `ceil(included_count / N)`. Every trip except the last is full. The last trip is short only when `allow_partial_final_trip` is enabled. If it is disabled and the count is not a multiple of `N`, pre-solver validation blocks the run.
 
-The CP-SAT sequence decides which locations share a trip. When a within-trip distance constraint is active, the locations inside each trip are then reordered into the shortest route that still satisfies the hard constraints. That reorder does not move a location into another trip.
+When the sailing-distance constraint is active, the CP-SAT objective is the total straight-line distance from each foundation to the next across the full sequence. That sum includes the legs inside a trip and the leg that joins the end of one trip to the start of the next. Harbour transit is not included. The same search chooses which locations share a trip and the order of those locations. For more than 12 included foundations, a feasible route is found first. The remaining time re-solves consecutive stretches of that route, including stretches that cross a trip boundary, to shorten the full sailing distance. A stretch is kept only when the complete path is shorter and the hard constraints still pass. The run stays `FEASIBLE` unless a complete model proves optimality. A relaxed lower bound may be reported with the gap. That bound is not a feasible sequence.
+
+A following pass may reverse a trip or change the order of trips when that shortens the same total. It does not change which locations share a trip, and it keeps the result only when the active hard constraints still pass.
 
 ## Hard constraints
 
@@ -39,7 +41,7 @@ Hard constraints are added with `model.Add`. They are never rewritten as penalti
 | Maximum or minimum count | Matching foundations per applicable trip stay inside the count. |
 | Same trip or separate trip | `trip_of` is equal, or pairwise unequal. |
 | Attribute ordering, delivery alignment, difficulty progression | The measured violation must be zero. |
-| Minimise within-trip distance | Not added to the CP-SAT model. After the trip groups are fixed, each group is placed in the shortest route allowed by the hard constraints. There is no numeric distance cap. The validator reports the metres as information. |
+| Minimise total sailing distance | The objective is the sum of Euclidean legs between every pair of consecutive sequence positions. That includes the leg joining one trip to the next. Harbour transit is not included. A hard term is weighted ahead of soft penalties. A soft term is scaled by severity. A following pass may reverse or reorder trips when that shortens the same total. There is no numeric distance cap. The validator reports the distance in nautical miles. One nautical mile is 1,852 metres. |
 
 Attribute filters are resolved from the uploaded values before the model is built. They are not decision-dependent expressions, and they are not executable code.
 
@@ -61,7 +63,7 @@ ceil(R * severity * 1000 / M)
 
 `M` depends on the constraint type and the current dataset, for example the maximum delivery deviation outside tolerance, the number of ordering pairs, or the total payload. That stops a large unit, such as kilograms or metres, from dominating a count-based preference by accident.
 
-The objective is the sum of these scaled terms. Within-trip distance is applied after this search and is not part of the stored objective. The stored objective is that scaled integer, not a physical cost.
+The objective is the sum of these scaled terms and any sailing-distance term. A hard distance term is the total metres multiplied by a weight large enough that one metre outranks every soft penalty. A soft distance term is scaled from metres with the formula above. The stored objective is that integer, not a physical cost.
 
 ## Objective construction
 
@@ -95,15 +97,15 @@ Overall validation is `Passed` only when no hard check failed. The sequence tabl
 
 ## Known limitations
 
-- MVP 1 solves at most 60 included foundations, including within-trip distance. The supplied workbook has 50 locations. The Render Free instance has 512 MB of RAM and 0.1 CPU. The solver time limit is capped at 600 seconds. A run that stops at the time limit is `FEASIBLE` or `UNKNOWN`, not a fabricated optimum.
+- MVP 1 solves at most 60 included foundations, including total sailing distance. The supplied workbook has 50 locations. The Render Free instance has 512 MB of RAM and 0.1 CPU. The solver time limit is capped at 600 seconds. A run that stops at the time limit is `FEASIBLE` or `UNKNOWN`, not a fabricated optimum.
 
 Workbook severities on a 0–1 scale are mapped onto 1–100 before the penalty (0.5 becomes 50). Hard rows use `NA` and have no severity. These named workbook rules are applied as written; the explanation cell is stored and is not parsed:
 
 - `Spider locations FOU`: matching spider locations occupy the first positions, in any order.
 - `Shallow locations`: at most one matching shallow location on a trip.
-- `Infield sailing optimization FOU`: after the locations in each trip are chosen, order them by straight-line distance from Easting and Northing, without harbour legs.
+- `Infield sailing optimization FOU`: minimise the straight-line sailing distance from Easting and Northing across the full sequence, choosing trip membership and order together. Harbour transit is not included.
 - `Jacking difficulty`: soft preference to keep difficult locations out of the first three trips.
-- Payload, harbour coordinates, and transit speed have no engineering default. Distance harbour legs stay unavailable until coordinates are entered on the constraint or the vessel settings.
+- Payload, harbour coordinates, and transit speed have no engineering default. Harbour transit is not part of the sailing-distance objective.
 - Transit speed is stored for the scenario record. MVP 1 does not convert distance into time.
 - Two-foundation hard precedence cycles are rejected before the solver. Longer cycles are left for CP-SAT and return `INFEASIBLE` when they cannot be satisfied.
 - Soft payload limits intentionally allow overload. The penalty is the excess weight, scaled as above.

@@ -50,7 +50,7 @@ Named rules in this workbook:
 
 - Spider locations are installed first, in any order among themselves.
 - At most one shallow location is placed on a trip.
-- Infield sailing orders the locations already assigned to each trip so the straight-line route inside that trip is as short as possible.
+- Infield sailing minimises the straight-line distance from each foundation to the next across the full sequence. The total includes the sail inside a trip and the sail from the end of one trip to the start of the next. Harbour transit is not included. On a larger set, the search re-solves stretches of the sequence that cross trip boundaries. The validation table shows the within-trip distance, the trip-to-trip distance, and the total in nautical miles.
 - Jacking difficulty, when active, prefers to keep difficult locations out of the first three trips.
 
 Earliest trip is a constraint you can add. It applies to one location, or to every location matching an attribute. The number is the first trip those locations may be installed. Enter 2 to keep them out of the first trip. For a Yes/No column such as Shallow location, use equals and YES.
@@ -79,7 +79,7 @@ The run summary shows the project, scenario, dataset version, time, solver statu
 
 Installation Sequence lists order, trip, vessel position, weight, delivery deviation, and the constraints that governed each foundation. Search by foundation ID, sort columns, and page through long results.
 
-Trip Summary lists count, order, payload, punch-through count, difficulty, and checks. Route distance appears when coordinates exist and a distance constraint is active. The unit is metres.
+Trip Summary lists count, order, payload, punch-through count, difficulty, and checks. Route distance appears when coordinates exist and a distance constraint is active. The unit is nautical miles. One nautical mile is 1,852 metres.
 
 Validation lists each check with target, actual result, status, affected foundations, and an explanation. Badges are Passed, Failed, Warning, Information, and Soft trade-off. The run passes only when every hard check passes.
 

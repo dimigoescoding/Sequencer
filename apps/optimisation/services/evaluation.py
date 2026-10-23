@@ -29,7 +29,7 @@ from apps.optimisation.services.metrics import (
     window_pair_count,
     window_violation,
 )
-from apps.optimisation.services.routing import harbour_coordinates, metres_between, metres_xy
+from apps.optimisation.services.routing import format_nautical_miles, metres_between
 from apps.optimisation.services.scaling import scaled_penalty, weight_kg
 from apps.optimisation.services.solver import _bound_targets, _sequence_bound_value
 from apps.optimisation.services.types import (
@@ -1023,16 +1023,41 @@ def _avoid_first_trips(constraint, placements, vessel, add, governing, penalties
 def _distance(constraint, placements, vessel, add, governing):
     _mark(governing, [item.foundation.foundation_id for item in placements], constraint.name)
     distance = _route_distance(placements, constraint, vessel)
+    ordered = sorted(placements, key=lambda item: item.sequence)
+    sailing = sum(
+        metres_between(left.foundation, right.foundation)
+        for left, right in zip(ordered, ordered[1:], strict=False)
+    )
+    add(
+        "Total sailing distance",
+        constraint.name,
+        "Sum of every consecutive foundation-to-foundation leg",
+        format_nautical_miles(sailing),
+        "Information",
+        [],
+        "This is the solver objective. It includes the sail inside each trip and the sail "
+        "from the end of one trip to the start of the next. Harbour transit is not included. "
+        "There is no maximum distance, so the nautical miles are information and are not a "
+        "pass or fail limit.",
+    )
     add(
         "Within-trip distance",
         constraint.name,
-        "Shortest route inside each trip",
-        f"{distance} m",
+        "Sailing that stays inside trips",
+        format_nautical_miles(distance),
         "Information",
         [],
-        "The solver chooses which locations share a trip. Their order is then the shortest "
-        "route that still satisfies the hard constraints. There is no maximum distance, so "
-        "the metres are information and are not a pass or fail limit.",
+        "This is the part of the sailing total that stays inside trips.",
+    )
+    add(
+        "Trip-to-trip distance",
+        constraint.name,
+        "Sail from the end of one trip to the start of the next",
+        format_nautical_miles(sailing - distance),
+        "Information",
+        [],
+        "These are the joins between trips. Total sailing distance equals the within-trip "
+        "distance plus this trip-to-trip distance. Harbour transit is not included.",
     )
     return _empty()
 
@@ -1040,26 +1065,15 @@ def _distance(constraint, placements, vessel, add, governing):
 def _route_distance(
     placements: list[_Placement], constraint: ConstraintInput, vessel: VesselConfig
 ) -> int:
+    del constraint, vessel
     total = 0
     grouped: dict[int, list[_Placement]] = defaultdict(list)
     for placement in placements:
         grouped[placement.trip].append(placement)
-    harbour = harbour_coordinates(constraint.parameters, vessel)
     for group in grouped.values():
         ordered = sorted(group, key=lambda item: item.position)
         for left, right in zip(ordered, ordered[1:], strict=False):
             total += metres_between(left.foundation, right.foundation)
-        if harbour is not None and ordered:
-            easting, northing = harbour
-            total += metres_xy(
-                ordered[0].foundation.easting_m, ordered[0].foundation.northing_m, easting, northing
-            )
-            total += metres_xy(
-                ordered[-1].foundation.easting_m,
-                ordered[-1].foundation.northing_m,
-                easting,
-                northing,
-            )
     return total
 
 

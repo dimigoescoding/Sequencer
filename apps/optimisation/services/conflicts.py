@@ -105,7 +105,7 @@ def find_conflicts(
             and count > MAX_DISTANCE_FOUNDATIONS
         ):
             conflicts.append(
-                f"{constraint.name} orders the route inside each trip after the locations are chosen. "
+                f"{constraint.name} minimises total sailing distance in the solver. "
                 f"MVP 1 does this for up to {MAX_DISTANCE_FOUNDATIONS} included foundations."
             )
             continue
