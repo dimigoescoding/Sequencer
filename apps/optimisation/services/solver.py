@@ -15,6 +15,15 @@ from typing import Any
 from ortools.sat.python import cp_model
 
 from apps.constraints.services.matching import matching_foundations
+from apps.optimisation.services.buffer import (
+    DAY_SECONDS,
+    PREVIOUS,
+    buffer_problem,
+    location_links,
+    package_name,
+    slot_instants,
+    worst_shortfall,
+)
 from apps.optimisation.services.geometry import (
     positions_in_trip_window,
     required_trips,
@@ -83,11 +92,13 @@ def solve_programme(
     turbines: list[FoundationInput],
     vessel: VesselConfig,
     constraints: list[ConstraintInput],
+    programme: dict | None = None,
 ) -> tuple[str, int | None, float, str, list[CampaignResult]]:
     """Solve FOU, IAC, and WTG in one model when more than foundations are included.
 
     A foundation-only campaign keeps the existing search, including the longer
-    sailing-distance search. Packages do not impose an order on each other.
+    sailing-distance search. Packages do not impose an order on each other
+    unless a package buffer is active.
     """
     started = time.perf_counter()
     fou_items = [item for item in foundations if item.include]
@@ -106,6 +117,11 @@ def solve_programme(
             "No included FOU, IAC, or WTG activities are available to sequence.",
             [],
         )
+    groups = {"FOU": fou_items, "IAC": iac_items, "WTG": wtg_items}
+    calendar = programme or {}
+    problems = buffer_problem(constraints, groups, calendar)
+    if problems:
+        return ("ERROR", None, time.perf_counter() - started, " ".join(problems), [])
     if not iac_items and not wtg_items:
         status, objective, runtime, message, order = solve_order(
             foundations, vessel, grouped["FOU"]
@@ -153,6 +169,8 @@ def solve_programme(
             grouped["WTG"],
             "wtg",
         )
+    by_package = {package: builder for builder, (package, *_rest) in zip(builders, plans)}
+    buffered = _apply_package_buffers(model, by_package, groups, constraints, calendar)
     terms = _combined_objective(builders)
     if terms:
         model.Minimize(sum(terms))
@@ -161,10 +179,15 @@ def solve_programme(
     runtime = time.perf_counter() - started
     active = [item for item in constraints if item.active]
     message = _status_message(status, active)
+    programme_note = (
+        "Programme dates set the package buffer. No other package order was added."
+        if buffered
+        else "No package order or buffer was added."
+    )
     message = (
         message
         + " The included packages were solved together as one programme. "
-        + "No package order or buffer was added."
+        + programme_note
     )
     if status not in {"OPTIMAL", "FEASIBLE"}:
         return status, None, runtime, message, []
@@ -208,6 +231,93 @@ def _add_campaign(model, builders, plans, package, items, vessel, constraints, p
             builder.add_constraint(constraint)
     builders.append(builder)
     plans.append((package, items, vessel, constraints))
+
+
+def _apply_package_buffers(model, by_package, groups, constraints, calendar) -> bool:
+    applied = False
+    for constraint in constraints:
+        if not constraint.active or constraint.constraint_type != "package_buffer":
+            continue
+        later_name = package_name(constraint)
+        earlier_name = PREVIOUS[later_name]
+        later = by_package[later_name]
+        earlier = by_package[earlier_name]
+        links = location_links(later_name, groups)
+        applied = True
+        if not links:
+            continue
+        ends = slot_instants(calendar, earlier_name, earlier.n, "end")
+        starts = slot_instants(calendar, later_name, later.n, "start")
+        if ends is None or starts is None:
+            continue
+        mode = constraint.parameters.get("mode")
+        if mode == "minimum" and constraint.enforcement == "hard":
+            days = int(constraint.parameters["minimum_days"])
+            _forbid_short_gaps(model, earlier, later, ends, starts, links, days)
+            continue
+        if mode == "minimum":
+            _penalise_short_gaps(earlier, later, ends, starts, links, constraint)
+            continue
+        _maximize_gaps(model, earlier, later, ends, starts, links, constraint)
+    return applied
+
+
+def _forbid_short_gaps(model, earlier, later, ends, starts, links, days: int) -> None:
+    minimum = days * DAY_SECONDS
+    for _location, lefts, rights in links:
+        for left in lefts:
+            for right in rights:
+                for position, end in enumerate(ends):
+                    for slot, start in enumerate(starts):
+                        if start - end < minimum:
+                            model.Add(earlier.x[left][position] + later.x[right][slot] <= 1)
+
+
+def _penalise_short_gaps(earlier, later, ends, starts, links, constraint) -> None:
+    minimum = int(constraint.parameters["minimum_days"]) * DAY_SECONDS
+    limit = worst_shortfall(ends, starts, minimum)
+    if limit <= 0:
+        return
+    shorts = []
+    for _location, lefts, rights in links:
+        pieces = []
+        for left in lefts:
+            for right in rights:
+                short = earlier._int(0, limit, "buffer")
+                later_at = _assigned_instant(later, right, starts)
+                earlier_at = _assigned_instant(earlier, left, ends)
+                earlier.model.Add(short >= minimum - later_at + earlier_at)
+                pieces.append(short)
+        if len(pieces) == 1:
+            shorts.append(pieces[0])
+            continue
+        worst = earlier._int(0, limit, "buffer")
+        for piece in pieces:
+            earlier.model.Add(worst >= piece)
+        shorts.append(worst)
+    if shorts:
+        earlier._penalise(sum(shorts), limit * len(shorts), constraint.severity)
+
+
+def _maximize_gaps(model, earlier, later, ends, starts, links, constraint) -> None:
+    low = min(starts) - max(ends)
+    high = max(starts) - min(ends)
+    least = model.NewIntVar(low, high, earlier._name("buffer"))
+    for _location, lefts, rights in links:
+        for left in lefts:
+            for right in rights:
+                later_at = _assigned_instant(later, right, starts)
+                earlier_at = _assigned_instant(earlier, left, ends)
+                model.Add(least <= later_at - earlier_at)
+    deficit = high - least
+    if constraint.enforcement == "hard":
+        earlier.hard_distance_terms.append(deficit)
+        return
+    earlier._penalise(deficit, max(high - low, 1), constraint.severity)
+
+
+def _assigned_instant(builder, index: int, instants: list[int]):
+    return sum(instants[position] * builder.x[index][position] for position in range(builder.n))
 
 
 def _combined_objective(builders: list[_Builder]) -> list[Any]:

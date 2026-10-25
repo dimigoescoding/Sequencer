@@ -23,9 +23,14 @@
               <input type="hidden" name="enforcement" value="{{ constraint.enforcement }}">
               {% if constraint.severity %}<input type="hidden" name="severity" value="{{ constraint.severity }}">{% endif %}
               <select class="form-select form-select-sm" name="package" aria-label="Package for {{ constraint.name }}" onchange="this.form.submit()">
+                {% if constraint.constraint_type == "package_buffer" %}
+                <option value="IAC" {% if constraint.package == "IAC" %}selected{% endif %}>IAC</option>
+                <option value="WTG" {% if constraint.package == "WTG" %}selected{% endif %}>WTG</option>
+                {% else %}
                 <option value="FOU" {% if constraint.package == "FOU" %}selected{% endif %}>FOU</option>
                 <option value="IAC" {% if constraint.package == "IAC" %}selected{% endif %}>IAC</option>
                 <option value="WTG" {% if constraint.package == "WTG" %}selected{% endif %}>WTG</option>
+                {% endif %}
               </select>
             </form>
           </td>

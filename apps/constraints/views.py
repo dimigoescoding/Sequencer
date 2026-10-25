@@ -97,8 +97,12 @@ def constraint_create(request, project_id: int, scenario_id: int, constraint_typ
 def constraint_edit(request, project_id: int, scenario_id: int, constraint_id: int):
     constraint = owned_constraint(request.user, project_id, scenario_id, constraint_id)
     scenario = constraint.scenario
+    package_choices = None
+    if constraint.constraint_type == "package_buffer":
+        package_choices = [("IAC", "IAC"), ("WTG", "WTG")]
     form = ConstraintLevelForm(
         request.POST or None,
+        package_choices=package_choices,
         initial={
             "package": constraint.package or "FOU",
             "enforcement": constraint.enforcement,

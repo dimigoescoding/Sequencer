@@ -13,6 +13,7 @@ from apps.constraints.services.matching import (
     matching_foundations,
 )
 from apps.constraints.services.parameters import validate_parameters
+from apps.optimisation.services.buffer import buffer_problem
 from apps.optimisation.services.geometry import (
     required_trips,
     sequence_positions_for_trip,
@@ -42,6 +43,7 @@ def find_programme_conflicts(
     vessel: VesselConfig,
     constraints: list[ConstraintInput],
     columns_present: set[str],
+    programme: dict | None = None,
 ) -> list[str]:
     """Check each package with its own trip limit. An empty package is skipped."""
 
@@ -76,6 +78,17 @@ def find_programme_conflicts(
             messages.append(f"{label}: {message}")
     if not any_included:
         messages.append("No included FOU, IAC, or WTG activities are available to sequence.")
+    messages.extend(
+        buffer_problem(
+            constraints,
+            {
+                "FOU": [item for item in foundations if item.include],
+                "IAC": [item for item in cables if item.include],
+                "WTG": [item for item in turbines if item.include],
+            },
+            programme or {},
+        )
+    )
     return _unique(messages)
 
 

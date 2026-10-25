@@ -354,6 +354,8 @@ def _check_constraint(
         return _installed_first(constraint, placements, add, governing, penalties)
     if kind == "avoid_matching_in_first_trips":
         return _avoid_first_trips(constraint, placements, vessel, add, governing, penalties)
+    if kind == "package_buffer":
+        return 0, set(), set(), set(), set()
     add(
         constraint.constraint_type,
         constraint.name,

@@ -107,6 +107,14 @@ CONSTRAINT_TYPES: dict[str, dict[str, str]] = {
         "label": "Avoid matches in the first trips",
         "summary": "Matching locations are kept out of the first trips named by the rule.",
     },
+    "package_buffer": {
+        "label": "Package buffer",
+        "summary": (
+            "Hold this package until the previous package has been finished at the same location. "
+            "IAC waits for FOU. WTG waits for IAC. A minimum is a number of days. "
+            "Maximize makes the smallest location gap as large as the programme dates allow."
+        ),
+    },
 }
 
 TYPE_ORDER: list[str] = list(CONSTRAINT_TYPES)
