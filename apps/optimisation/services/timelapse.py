@@ -14,22 +14,17 @@ from apps.optimisation.services.routing import format_nautical_miles, metres_xy
 
 
 def timelapse_payload(run: OptimisationRun) -> dict[str, Any]:
-    sequence = list(run.sequence_rows.all().order_by("installation_sequence"))
+    sequence = list(run.sequence_rows.all().order_by("package", "installation_sequence"))
+    if any(row.package not in {"", "FOU"} for row in sequence):
+        sequence = [row for row in sequence if row.package in {"", "FOU"}]
     if not sequence:
         return {"frames": [], "missing": [], "within_trip": ""}
-    located = {
-        row.foundation_id: row
-        for row in run.dataset_version.foundations.all()
-    }
+    located = {row.foundation_id: row for row in run.dataset_version.foundations.all()}
     frames = []
     missing = []
     for row in sequence:
         foundation = located.get(row.foundation_id)
-        if (
-            foundation is None
-            or foundation.easting_m is None
-            or foundation.northing_m is None
-        ):
+        if foundation is None or foundation.easting_m is None or foundation.northing_m is None:
             missing.append(row.foundation_id)
             continue
         frames.append(

@@ -37,13 +37,13 @@
       {% else %}
         <div class="table-responsive">
           <table class="table table-sm mb-0">
-            <thead><tr><th>Name</th><th>Dataset</th><th>Per trip</th><th>Payload base</th><th>Time limit</th></tr></thead>
+            <thead><tr><th>Name</th><th>Dataset</th><th>FOU / WTG per trip</th><th>Payload base</th><th>Time limit</th></tr></thead>
             <tbody>
               {% for scenario in scenarios %}
                 <tr>
                   <td><a href="{{ scenario.get_absolute_url }}">{{ scenario.name }}</a></td>
                   <td>{% if scenario.dataset_version %}v{{ scenario.dataset_version.version_number }}{% else %}—{% endif %}</td>
-                  <td>{{ scenario.vessel_settings.max_foundations_per_trip }}</td>
+                  <td>{{ scenario.vessel_settings.max_foundations_per_trip }} / {{ scenario.vessel_settings.wtg_per_trip }}</td>
                   <td>{% if scenario.vessel_settings.base_maximum_trip_payload_t %}{{ scenario.vessel_settings.base_maximum_trip_payload_t }} t{% else %}Not set{% endif %}</td>
                   <td>{{ scenario.vessel_settings.solver_time_limit_seconds }} s</td>
                 </tr>

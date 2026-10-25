@@ -129,13 +129,15 @@ python manage.py check --deploy
 
 ## Excel input
 
-Download `Sequencer_input_template.xlsx` from a project's Foundation Data page. The workbook needs three sheets: `Information`, `Constraints`, and `Settings`.
+Download `Sequencer_input_template.xlsx` from a project's Foundation Data page. The workbook needs four sheets: `FOU data`, `IAC data`, `WTG data`, and `Programme`. Extra sheets are ignored. Constraints and trip settings are created in the app.
 
-`Information` holds one row per location. Required columns are WTG ID, average weight, Easting, Northing, Spider location, Shallow location, and Jacking difficulty. `Constraints` holds the starting rules. On a scenario you can change hard or soft and the severity, and you can add another constraint from the supported list. `Settings` holds values such as `MP per trip`. Solver time, from 1 to 600 seconds, is chosen on the scenario settings page.
+`FOU data` holds one foundation row. Include, WTG ID, Easting, and Northing are required. Average weight is required only when Include is Yes. Spider, shallow, and jacking may be blank. `IAC data` holds one cable per row, joining two location ids. `WTG data` holds one turbine row. `Programme` holds slot numbers and optional P50 start and end times for each package. A slot is not a location id.
 
-WTG ID must be unique. Spider location and Shallow location accept Yes/No. Weight must be positive. Macro-enabled workbooks are rejected. Formula text is not calculated. If Excel has stored a calculated value, that stored value is used.
+On a scenario, the Package dropdown is FOU, IAC, or WTG. FOU per trip and WTG per trip are edited in settings. Solver time, from 1 to 600 seconds, is one limit for the whole programme.
 
-Critical errors block activation and optimisation. The scenario copies constraints and settings from the selected dataset version. Choosing another version reloads them.
+Ids must be unique inside a sheet. Include accepts Yes or No. Macro-enabled workbooks are rejected. Formula text is not calculated. If Excel has stored a calculated value, that stored value is used.
+
+Critical errors block activation and optimisation. Choosing another dataset does not delete the scenario's constraints or trip settings. The solver builds one sequence for the included packages. It does not invent a buffer or a package order. If a hard check fails, the whole run is invalid.
 
 Uploads are limited to `.xlsx` files of at most 2 MB.
 

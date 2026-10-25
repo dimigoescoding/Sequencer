@@ -19,30 +19,12 @@
 </div>
 <div class="alert {% if dataset.error_count %}alert-danger{% elif dataset.warning_count %}alert-warning{% else %}alert-success{% endif %}">
   Dataset version {{ dataset.version_number }} is stored.
-  {{ dataset.row_count }} foundations,
-  {{ dataset.constraint_rows.count }} constraints,
-  {{ dataset.setting_rows.count }} settings.
+  {{ dataset.foundations.count }} FOU rows,
+  {{ dataset.cables.count }} IAC rows,
+  {{ dataset.wtg_locations.count }} WTG rows,
+  {{ dataset.programme_slots.count }} programme slots.
+  Constraints and trip settings are edited on the scenario, not taken from this file.
 </div>
-{% if dataset.constraint_rows.all %}
-  <div class="card mb-3"><div class="card-body">
-    <h2 class="h6">Constraints from the workbook</h2>
-    <ul class="mb-0">
-      {% for item in dataset.constraint_rows.all %}
-        <li>{{ item.package }} · {{ item.name }} · {{ item.enforcement }} · {% if item.active %}Active{% else %}Not active{% endif %}</li>
-      {% endfor %}
-    </ul>
-  </div></div>
-{% endif %}
-{% if dataset.setting_rows.all %}
-  <div class="card mb-3"><div class="card-body">
-    <h2 class="h6">Settings from the workbook</h2>
-    <ul class="mb-0">
-      {% for item in dataset.setting_rows.all %}
-        <li>{{ item.name }}: {{ item.value }}</li>
-      {% endfor %}
-    </ul>
-  </div></div>
-{% endif %}
 {% if dataset.error_count %}
   <div class="alert alert-danger">Critical errors block activation and optimisation. Upload a corrected workbook. This version stays unchanged.</div>
 {% elif dataset.warning_count %}
@@ -63,7 +45,7 @@
     <h2 class="h6">Fixed position against scenario capacity</h2>
     <ul class="mb-0">
       {% for scenario in scenarios %}
-        <li>{{ scenario.name }}: capacity {{ scenario.vessel_settings.max_foundations_per_trip }}. Positions above that capacity are reported before optimisation.</li>
+        <li>{{ scenario.name }}: FOU per trip {{ scenario.vessel_settings.max_foundations_per_trip }}, WTG per trip {{ scenario.vessel_settings.wtg_per_trip }}. Positions above that capacity are reported before optimisation.</li>
       {% endfor %}
     </ul>
   </div></div>

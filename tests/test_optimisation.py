@@ -10,7 +10,7 @@ from apps.datasets.services.uploads import activate_dataset, create_dataset_vers
 from apps.optimisation.services.evaluation import evaluate
 from apps.optimisation.services.runner import execute
 from apps.optimisation.services.scaling import scaled_penalty
-from apps.optimisation.services.solver import solve_order
+from apps.optimisation.services.solver import solve_order, solve_programme
 from apps.projects.models import Project
 from apps.scenarios.models import Scenario, VesselSettings
 from django.contrib.auth import get_user_model
@@ -314,23 +314,10 @@ def test_distance_objective_keeps_a_hard_position_rule():
 
 
 def test_workbook_distance_is_the_solver_objective():
-    from apps.datasets.services.parsing import parse_workbook
     from apps.optimisation.services.types import ConstraintInput
+    from tests.support import legacy_campaign
 
-    with open("tests/fixtures/sequencer_input.xlsx", "rb") as handle:
-        parsed = parse_workbook(handle.read())
-    rules = [
-        ConstraintInput(
-            name=item.name,
-            constraint_type=item.constraint_type,
-            parameters=item.parameters,
-            enforcement=item.enforcement,
-            active=item.active,
-            severity=item.severity,
-            description=item.explanation,
-        )
-        for item in parsed.constraints
-    ]
+    foundations, rules = legacy_campaign("tests/fixtures/sequencer_input.xlsx")
     rules.append(
         ConstraintInput(
             name="No shallow in trip 1",
@@ -349,28 +336,24 @@ def test_workbook_distance_is_the_solver_objective():
     )
     plain = [item for item in rules if item.constraint_type != "minimise_within_trip_distance"]
     limits = vessel(max_foundations_per_trip=4, solver_time_limit_seconds=20)
-    _status, _objective, _runtime, _message, baseline = solve_order(
-        parsed.foundations, limits, plain
-    )
+    _status, _objective, _runtime, _message, baseline = solve_order(foundations, limits, plain)
     started = time.perf_counter()
-    status, objective, _runtime, _message, order = solve_order(parsed.foundations, limits, rules)
+    status, objective, _runtime, _message, order = solve_order(foundations, limits, rules)
     elapsed = time.perf_counter() - started
     assert status in {"OPTIMAL", "FEASIBLE"}
     assert objective is not None and objective > 0
     assert elapsed < 30
     assert len(order) == 50
-    assert _path(parsed.foundations, order) < _path(parsed.foundations, baseline)
-    review = evaluate(parsed.foundations, limits, rules, order)
+    assert _path(foundations, order) < _path(foundations, baseline)
+    review = evaluate(foundations, limits, rules, order)
     assert review.validation_status == "Passed"
     spiders = {
-        item.foundation_id
-        for item in parsed.foundations
-        if item.attributes.get("Spider location") is True
+        item.foundation_id for item in foundations if item.attributes.get("Spider location") is True
     }
     assert set(order[: len(spiders)]) == spiders
     shallow = {
         item.foundation_id
-        for item in parsed.foundations
+        for item in foundations
         if item.attributes.get("Shallow location") is True
     }
     assert not any(name in shallow for name in order[:4])
@@ -656,6 +639,93 @@ def test_second_step_does_not_reverse_a_spider_prefix():
     order = optimise_trip_connections(["S", "N", "Y", "X"], foundations, limits, rules)
     assert order == ["S", "N", "X", "Y"]
     assert evaluate(foundations, limits, rules, order).validation_status == "Passed"
+
+
+def test_one_programme_orders_fou_iac_and_wtg_together():
+    fou = [
+        foundation("A", easting_m=0, northing_m=0, attributes={}),
+        foundation("B", easting_m=10, northing_m=0, attributes={}),
+    ]
+    cables = [
+        foundation("C1", weight=None, easting_m=5, northing_m=0),
+        foundation("C2", weight=None, easting_m=15, northing_m=0),
+    ]
+    turbines = [
+        foundation("A", easting_m=0, northing_m=0),
+        foundation("B", easting_m=10, northing_m=0),
+    ]
+    rules = [
+        constraint(
+            "A before B",
+            "precedence",
+            {
+                "predecessor_foundation_id": "A",
+                "successor_foundation_id": "B",
+                "minimum_gap": 1,
+            },
+            package="FOU",
+        )
+    ]
+    limits = vessel(max_foundations_per_trip=1, wtg_per_trip=1, solver_time_limit_seconds=5)
+    status, _objective, _runtime, message, campaigns = solve_programme(
+        fou, cables, turbines, limits, rules
+    )
+    assert status == "OPTIMAL"
+    assert "one programme" in message
+    by_package = {item.package: item for item in campaigns}
+    assert by_package["FOU"].order == ["A", "B"]
+    assert set(by_package["IAC"].order) == {"C1", "C2"}
+    assert set(by_package["WTG"].order) == {"A", "B"}
+    assert (
+        evaluate(cables, by_package["IAC"].vessel, [], by_package["IAC"].order)
+        .trip_rows[0]
+        .foundation_count
+        == 2
+    )
+    assert (
+        len(evaluate(turbines, by_package["WTG"].vessel, [], by_package["WTG"].order).trip_rows)
+        == 2
+    )
+
+
+def test_an_infeasible_package_stores_no_partial_programme():
+    fou = [foundation("A"), foundation("B")]
+    cables = [foundation("C1", weight=None)]
+    rules = [
+        constraint(
+            "A before B",
+            "precedence",
+            {
+                "predecessor_foundation_id": "A",
+                "successor_foundation_id": "B",
+                "minimum_gap": 1,
+            },
+        ),
+        constraint(
+            "B before A",
+            "precedence",
+            {
+                "predecessor_foundation_id": "B",
+                "successor_foundation_id": "A",
+                "minimum_gap": 1,
+            },
+        ),
+    ]
+    status, objective, _runtime, _message, campaigns = solve_programme(
+        fou, cables, [], vessel(solver_time_limit_seconds=5), rules
+    )
+    assert status == "INFEASIBLE"
+    assert objective is None
+    assert campaigns == []
+
+
+def test_foundation_only_programme_uses_the_existing_order():
+    fou = [foundation("A", easting_m=0, northing_m=0), foundation("B", easting_m=3, northing_m=4)]
+    limits = vessel(max_foundations_per_trip=2, solver_time_limit_seconds=5)
+    direct = solve_order(fou, limits, [])
+    programme = solve_programme(fou, [], [], limits, [])
+    assert programme[0] == direct[0]
+    assert programme[4][0].order == direct[4]
 
 
 def _within_trip_path(foundations, names: list[str], capacity: int) -> int:

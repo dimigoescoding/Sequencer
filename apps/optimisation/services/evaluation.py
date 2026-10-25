@@ -1208,3 +1208,29 @@ def _trip_rows(
             )
         )
     return rows
+
+
+def merge_evaluations(parts: list[tuple[str, Evaluation]]) -> Evaluation:
+    """Combine package checks. Any hard failure makes the whole programme fail."""
+    merged = Evaluation(validation_status="Passed")
+    display_order = 0
+    for package, evaluation in parts:
+        for row in evaluation.sequence_rows:
+            row.package = package
+            merged.sequence_rows.append(row)
+        for row in evaluation.trip_rows:
+            row.package = package
+            merged.trip_rows.append(row)
+        for row in evaluation.validation_rows:
+            display_order += 1
+            row.check_name = f"{package}: {row.check_name}"
+            row.display_order = display_order
+            merged.validation_rows.append(row)
+        merged.soft_tradeoff_count += evaluation.soft_tradeoff_count
+        merged.hard_failures += evaluation.hard_failures
+        merged.objective_penalty += evaluation.objective_penalty
+        if evaluation.validation_status != "Passed":
+            merged.validation_status = "Failed"
+    if not parts:
+        merged.validation_status = "Failed"
+    return merged

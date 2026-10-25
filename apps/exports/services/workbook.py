@@ -28,6 +28,7 @@ THIN = Border(
 
 SEQUENCE_COLUMNS = [
     "Installation_Sequence",
+    "Package",
     "Trip",
     "Vessel_Position",
     "Foundation_ID",
@@ -66,6 +67,7 @@ def build_run_workbook(run: OptimisationRun) -> bytes:
         workbook.create_sheet("Trip_Summary"),
         run,
         [
+            "Package",
             "Trip",
             "Foundation_Count",
             "Foundations_In_Order",
@@ -283,6 +285,7 @@ def _write_summary(worksheet: Worksheet, run: OptimisationRun) -> None:
 def _sequence_values(row) -> list:
     return [
         row.installation_sequence,
+        row.package,
         row.trip,
         row.vessel_position,
         row.foundation_id,
@@ -306,6 +309,7 @@ def _sequence_values(row) -> list:
 
 def _trip_values(row) -> list:
     return [
+        row.package,
         row.trip,
         row.foundation_count,
         row.foundations_in_order,

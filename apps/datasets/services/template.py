@@ -1,7 +1,6 @@
-"""Downloadable workbook with the Information, Constraints, and Settings sheets.
+"""Downloadable workbook with FOU, IAC, WTG, and Programme headings.
 
-The Information sheet has headings only. The constraint and setting rows are the
-analysis catalogue. There is no project location data.
+There is no project location data. Constraints and settings are created in the app.
 """
 
 from __future__ import annotations
@@ -9,103 +8,93 @@ from __future__ import annotations
 from io import BytesIO
 
 from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-INFORMATION_HEADERS = (
+FOU_HEADERS = (
     "WTG ID",
+    "Include",
     "Structure",
     "Easting",
     "Northing",
     "Aver. Weight[t]",
+    "Length[m]",
+    "Delivery Batch",
     "Spider location",
     "Shallow location",
-    "String",
-    "Jacking difficulty",
-    "Location",
-    "Buffer IAC-FOU",
-    "Buffer WTG-IAC",
-    "FOU P50 start",
-    "FOU P50 end",
-    "IAC P50 start",
-    "IAC P50 end",
-    "WTG P50 start",
-    "WTG P50 end",
+    "Soil difficulty",
+    "Jacking Difficulty",
+    "Punch through",
+    "Eccentricity Limit",
 )
-
-CONSTRAINT_ROWS = (
-    (
-        "FOU",
-        "Spider locations FOU",
-        "Spider locations should be installed first, but in no particular order.",
-        "Hard",
-        "NA",
-        "Active",
-    ),
-    (
-        "FOU",
-        "Shallow locations",
-        "Only one shallow location per trip allowed",
-        "Hard",
-        "NA",
-        "Active",
-    ),
-    (
-        "FOU",
-        "Infield sailing optimization FOU",
-        "Optimizes the infield sailing time within the trip by calculating the distance between the turbines from the given coordinates",
-        "Soft",
-        0.5,
-        "Active",
-    ),
-    (
-        "FOU",
-        "Jacking difficulty",
-        "Avoid difficult locations in the first 3 trips",
-        "Soft",
-        0.5,
-        "Not active",
-    ),
+IAC_HEADERS = (
+    "Cable ID",
+    "Nickname",
+    "Include",
+    "String ID",
+    "Loop ID",
+    "Location ID\n(Cable start-point)",
+    "Location ID\n(Cable end-point)",
+    "Spider Cable",
+)
+WTG_HEADERS = (
+    "WTG ID",
+    "Include",
+    "Structure",
+    "Easting",
+    "Northing",
+    "Jacking difficulty WTG",
 )
 
 
 def build_template() -> bytes:
     workbook = Workbook()
-    information = workbook.active
-    information.title = "Information"
     header_fill = PatternFill("solid", fgColor="0F2C4C")
     header_font = Font(color="FFFFFF", bold=True)
-    for index, name in enumerate(INFORMATION_HEADERS, start=1):
-        cell = information.cell(1, index, name)
+    fou = workbook.active
+    fou.title = "FOU data"
+    _write_header(fou, FOU_HEADERS, header_fill, header_font)
+    iac = workbook.create_sheet("IAC data")
+    _write_header(iac, IAC_HEADERS, header_fill, header_font)
+    for column in (6, 7):
+        iac.cell(1, column).alignment = Alignment(wrap_text=True)
+    wtg = workbook.create_sheet("WTG data")
+    _write_header(wtg, WTG_HEADERS, header_fill, header_font)
+    programme = workbook.create_sheet("Programme")
+    programme["B1"] = "FOU"
+    programme["D1"] = "IAC"
+    programme["F1"] = "WTG"
+    programme.merge_cells("B1:C1")
+    programme.merge_cells("D1:E1")
+    programme.merge_cells("F1:G1")
+    second = (
+        "Location",
+        "P50 Start",
+        "P50 End",
+        "P50 Start",
+        "P50 End",
+        "P50 Start",
+        "P50 End",
+    )
+    for index, name in enumerate(second, start=1):
+        cell = programme.cell(2, index, name)
         cell.fill = header_fill
         cell.font = header_font
-        information.column_dimensions[get_column_letter(index)].width = max(18, len(name) + 2)
-    information.freeze_panes = "A2"
-
-    constraints = workbook.create_sheet("Constraints")
-    for index, name in enumerate(
-        ("Package", "Name", "Explanation", "Type", "Severity", "Status"), start=1
-    ):
-        cell = constraints.cell(1, index, name)
+        programme.column_dimensions[get_column_letter(index)].width = 20
+    for cell in programme[1]:
         cell.fill = header_fill
         cell.font = header_font
-    for row_index, row in enumerate(CONSTRAINT_ROWS, start=2):
-        for column, value in enumerate(row, start=1):
-            constraints.cell(row_index, column, value)
-    for column in range(1, 7):
-        constraints.column_dimensions[get_column_letter(column)].width = 28
-
-    settings = workbook.create_sheet("Settings")
-    settings["A1"] = "Setting"
-    settings["B1"] = "Number"
-    settings["A1"].fill = header_fill
-    settings["B1"].fill = header_fill
-    settings["A1"].font = header_font
-    settings["B1"].font = header_font
-    settings["A2"] = "MP per trip"
-    settings["B2"] = 4
-    settings.column_dimensions["A"].width = 24
-
+        cell.alignment = Alignment(horizontal="center")
+    programme.freeze_panes = "A3"
     buffer = BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()
+
+
+def _write_header(worksheet, headers, fill, font) -> None:
+    for index, name in enumerate(headers, start=1):
+        cell = worksheet.cell(1, index, name)
+        cell.fill = fill
+        cell.font = font
+        worksheet.column_dimensions[get_column_letter(index)].width = max(18, len(name) + 2)
+    worksheet.freeze_panes = "A2"

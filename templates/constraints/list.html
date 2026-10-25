@@ -8,16 +8,27 @@
   <h1 class="h3 mb-0">Constraints</h1>
   <a class="btn btn-primary" href="{% url 'constraints:choose' project.pk scenario.pk %}">Add constraint</a>
 </div>
-<p class="text-secondary">Workbook rows are listed here. Change hard or soft and the severity on each row, or add another constraint from the supported list. Explanation text is shown and is not turned into a rule.</p>
+<p class="text-secondary">Each constraint belongs to FOU, IAC, or WTG. Choose the package in the dropdown. The rule is used only for that package, inside the one programme solve. Explanation text is shown and is not turned into a rule.</p>
 {% if not constraints %}
-  <div class="card"><div class="card-body empty-state">No constraints yet. Add one, or upload a workbook with a Constraints sheet.</div></div>
+  <div class="card"><div class="card-body empty-state">No constraints yet. Add one for FOU, IAC, or WTG.</div></div>
 {% else %}
   <div class="table-responsive card"><table class="table table-sm align-middle mb-0">
     <thead><tr><th>Package</th><th>Name</th><th>Explanation</th><th>Rule</th><th>Type</th><th>Severity</th><th>Status</th><th></th></tr></thead>
     <tbody>
       {% for constraint in constraints %}
         <tr>
-          <td>{{ constraint.scope|default:"—" }}</td>
+          <td>
+            <form method="post" action="{% url 'constraints:edit' project.pk scenario.pk constraint.pk %}">
+              {% csrf_token %}
+              <input type="hidden" name="enforcement" value="{{ constraint.enforcement }}">
+              {% if constraint.severity %}<input type="hidden" name="severity" value="{{ constraint.severity }}">{% endif %}
+              <select class="form-select form-select-sm" name="package" aria-label="Package for {{ constraint.name }}" onchange="this.form.submit()">
+                <option value="FOU" {% if constraint.package == "FOU" %}selected{% endif %}>FOU</option>
+                <option value="IAC" {% if constraint.package == "IAC" %}selected{% endif %}>IAC</option>
+                <option value="WTG" {% if constraint.package == "WTG" %}selected{% endif %}>WTG</option>
+              </select>
+            </form>
+          </td>
           <td>{{ constraint.name }}</td>
           <td>{{ constraint.description }}</td>
           <td>{{ constraint.type_label }}{% if constraint.parameter_summary %}<div class="small text-secondary">{{ constraint.parameter_summary }}</div>{% endif %}</td>

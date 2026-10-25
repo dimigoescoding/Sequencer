@@ -7,10 +7,11 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from openpyxl import Workbook
 
+from apps.constraints.models import Constraint
+from apps.datasets.services.catalogue import compile_constraint
 from apps.datasets.services.uploads import activate_dataset, create_dataset_version
 from apps.projects.models import Project
 from apps.scenarios.models import Scenario, VesselSettings
-from apps.scenarios.services.sync import sync_scenario_from_dataset
 
 DEMO_USERNAME = "demo"
 DEMO_PASSWORD = "demo-local-only"
@@ -58,94 +59,135 @@ class Command(BaseCommand):
         scenario = Scenario.objects.create(
             project=project,
             name=DEMO_SCENARIO,
-            description="Constraints and settings loaded from the synthetic workbook.",
+            description="Synthetic FOU rows. Constraints and trip settings are stored on the scenario.",
             dataset_version=version,
         )
-        VesselSettings.objects.create(scenario=scenario, solver_time_limit_seconds=20)
-        sync_scenario_from_dataset(scenario)
+        VesselSettings.objects.create(
+            scenario=scenario,
+            max_foundations_per_trip=4,
+            wtg_per_trip=4,
+            solver_time_limit_seconds=20,
+        )
+        _add_constraints(scenario)
         self.stdout.write(
             self.style.SUCCESS(f"Demo user '{DEMO_USERNAME}' / project '{DEMO_PROJECT}' is ready.")
         )
         self.stdout.write("Local password: demo-local-only")
 
 
+def _add_constraints(scenario) -> None:
+    rows = [
+        (
+            "FOU",
+            "Spider locations FOU",
+            "Spider locations should be installed first, but in no particular order.",
+            "hard",
+            "NA",
+            True,
+        ),
+        (
+            "FOU",
+            "Shallow locations",
+            "Only one shallow location per trip allowed",
+            "hard",
+            "NA",
+            True,
+        ),
+        (
+            "FOU",
+            "Infield sailing optimization FOU",
+            "Optimizes the infield sailing time within the trip from the given coordinates.",
+            "soft",
+            "0.5",
+            True,
+        ),
+        (
+            "FOU",
+            "Jacking difficulty",
+            "Avoid difficult locations in the first 3 trips",
+            "soft",
+            "0.5",
+            False,
+        ),
+    ]
+    for index, (package, name, explanation, enforcement, severity, active) in enumerate(
+        rows, start=1
+    ):
+        compiled = compile_constraint(
+            package=package,
+            name=name,
+            explanation=explanation,
+            enforcement=enforcement,
+            reported_severity=severity,
+            active=active,
+            source_row=index,
+        )
+        Constraint.objects.create(
+            scenario=scenario,
+            name=compiled.name,
+            constraint_type=compiled.constraint_type,
+            description=compiled.explanation,
+            active=compiled.active,
+            enforcement=compiled.enforcement,
+            severity=compiled.severity,
+            package=package,
+            parameters_json=compiled.parameters,
+            display_order=index,
+        )
+
+
 def _workbook() -> bytes:
     workbook = Workbook()
-    information = workbook.active
-    information.title = "Information"
-    information.append(
+    fou = workbook.active
+    fou.title = "FOU data"
+    fou.append(
         [
             "WTG ID",
+            "Include",
             "Structure",
             "Easting",
             "Northing",
             "Aver. Weight[t]",
             "Spider location",
             "Shallow location",
-            "String",
-            "Jacking difficulty",
-            "Location",
+            "Jacking Difficulty",
         ]
     )
     rows = [
-        ("S1", 0, 0, 500, "YES", "NO", "Easy", 1),
-        ("S2", 100, 0, 520, "YES", "NO", "Easy", 2),
-        ("A1", 0, 100, 480, "NO", "YES", "Easy", 3),
-        ("A2", 100, 100, 490, "NO", "NO", "Difficult", 4),
-        ("B1", 0, 200, 470, "NO", "YES", "Easy", 5),
-        ("B2", 100, 200, 460, "NO", "NO", "Easy", 6),
-        ("C1", 0, 300, 450, "NO", "NO", "Easy", 7),
-        ("C2", 100, 300, 440, "NO", "NO", "Difficult", 8),
+        ("S1", 0, 0, 500, "YES", "NO", "Easy"),
+        ("S2", 100, 0, 520, "YES", "NO", "Easy"),
+        ("A1", 0, 100, 480, "NO", "YES", "Easy"),
+        ("A2", 100, 100, 490, "NO", "NO", "Difficult"),
+        ("B1", 0, 200, 470, "NO", "YES", "Easy"),
+        ("B2", 100, 200, 460, "NO", "NO", "Easy"),
+        ("C1", 0, 300, 450, "NO", "NO", "Easy"),
+        ("C2", 100, 300, 440, "NO", "NO", "Difficult"),
     ]
-    for wtg, easting, northing, weight, spider, shallow, difficulty, location in rows:
-        information.append(
-            [wtg, "WTG", easting, northing, weight, spider, shallow, "S1", difficulty, location]
-        )
-    constraints = workbook.create_sheet("Constraints")
-    constraints.append(["Package", "Name", "Explanation", "Type", "Severity", "Status"])
-    constraints.append(
+    for wtg, easting, northing, weight, spider, shallow, difficulty in rows:
+        fou.append([wtg, "YES", "WTG", easting, northing, weight, spider, shallow, difficulty])
+    iac = workbook.create_sheet("IAC data")
+    iac.append(
         [
-            "FOU",
-            "Spider locations FOU",
-            "Spider locations should be installed first, but in no particular order.",
-            "Hard",
-            "NA",
-            "Active",
+            "Cable ID",
+            "Include",
+            "Location ID (Cable start-point)",
+            "Location ID (Cable end-point)",
         ]
     )
-    constraints.append(
-        [
-            "FOU",
-            "Shallow locations",
-            "Only one shallow location per trip allowed",
-            "Hard",
-            "NA",
-            "Active",
-        ]
-    )
-    constraints.append(
-        [
-            "FOU",
-            "Infield sailing optimization FOU",
-            "Optimizes the infield sailing time within the trip from the given coordinates.",
-            "Soft",
-            0.5,
-            "Active",
-        ]
-    )
-    constraints.append(
-        [
-            "FOU",
-            "Jacking difficulty",
-            "Avoid difficult locations in the first 3 trips",
-            "Soft",
-            0.5,
-            "Not active",
-        ]
-    )
-    settings = workbook.create_sheet("Settings")
-    settings.append(["Setting", "Number"])
-    settings.append(["MP per trip", 4])
+    wtg_sheet = workbook.create_sheet("WTG data")
+    wtg_sheet.append(["WTG ID", "Include", "Easting", "Northing"])
+    programme = workbook.create_sheet("Programme")
+    programme["B1"] = "FOU"
+    programme["D1"] = "IAC"
+    programme["F1"] = "WTG"
+    programme.merge_cells("B1:C1")
+    programme.merge_cells("D1:E1")
+    programme.merge_cells("F1:G1")
+    for index, name in enumerate(
+        ("Location", "P50 Start", "P50 End", "P50 Start", "P50 End", "P50 Start", "P50 End"),
+        start=1,
+    ):
+        programme.cell(2, index, name)
     buffer = BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()

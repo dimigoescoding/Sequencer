@@ -90,6 +90,88 @@ class Foundation(models.Model):
         return self.foundation_id
 
 
+class Cable(models.Model):
+    """One inter-array cable. It joins two location ids and is not a point."""
+
+    dataset_version = models.ForeignKey(
+        DatasetVersion, on_delete=models.CASCADE, related_name="cables"
+    )
+    source_row = models.PositiveIntegerField(null=True, blank=True)
+    cable_id = models.CharField(max_length=100)
+    nickname = models.CharField(max_length=200, blank=True)
+    include = models.BooleanField(null=True)
+    string_id = models.CharField(max_length=100, blank=True)
+    loop_id = models.CharField(max_length=100, blank=True)
+    start_location_id = models.CharField(max_length=100, blank=True)
+    end_location_id = models.CharField(max_length=100, blank=True)
+    spider_cable = models.BooleanField(null=True)
+
+    class Meta:
+        ordering = ["source_row", "id"]
+        indexes = [
+            models.Index(fields=["dataset_version", "cable_id"]),
+            models.Index(fields=["dataset_version", "include"]),
+        ]
+
+    def __str__(self) -> str:
+        return self.cable_id
+
+
+class WtgLocation(models.Model):
+    """One WTG installation activity. It is sequenced with FOU and IAC, not instead of them."""
+
+    dataset_version = models.ForeignKey(
+        DatasetVersion, on_delete=models.CASCADE, related_name="wtg_locations"
+    )
+    source_row = models.PositiveIntegerField(null=True, blank=True)
+    wtg_id = models.CharField(max_length=100)
+    include = models.BooleanField(null=True)
+    structure = models.CharField(max_length=100, blank=True)
+    easting_m = models.DecimalField(max_digits=16, decimal_places=3, null=True, blank=True)
+    northing_m = models.DecimalField(max_digits=16, decimal_places=3, null=True, blank=True)
+    spider_location = models.BooleanField(null=True)
+    string_label = models.CharField(max_length=100, blank=True)
+    jacking_difficulty = models.CharField(max_length=100, blank=True)
+
+    class Meta:
+        ordering = ["source_row", "id"]
+        indexes = [
+            models.Index(fields=["dataset_version", "wtg_id"]),
+            models.Index(fields=["dataset_version", "include"]),
+        ]
+
+    def __str__(self) -> str:
+        return self.wtg_id
+
+
+class ProgrammeSlot(models.Model):
+    """One programme slot. Dates are per package and are not location ids."""
+
+    dataset_version = models.ForeignKey(
+        DatasetVersion, on_delete=models.CASCADE, related_name="programme_slots"
+    )
+    source_row = models.PositiveIntegerField(null=True, blank=True)
+    slot = models.PositiveIntegerField()
+    fou_p50_start = models.DateTimeField(null=True, blank=True)
+    fou_p50_end = models.DateTimeField(null=True, blank=True)
+    iac_p50_start = models.DateTimeField(null=True, blank=True)
+    iac_p50_end = models.DateTimeField(null=True, blank=True)
+    wtg_p50_start = models.DateTimeField(null=True, blank=True)
+    wtg_p50_end = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["slot", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["dataset_version", "slot"], name="unique_programme_slot"
+            )
+        ]
+        indexes = [models.Index(fields=["dataset_version", "slot"])]
+
+    def __str__(self) -> str:
+        return str(self.slot)
+
+
 class StoredFile(models.Model):
     """Workbook bytes kept in the database so a Free Render instance can sleep."""
 

@@ -68,7 +68,7 @@ def constraint_create(request, project_id: int, scenario_id: int, constraint_typ
     if scenario.dataset_version_id is None or scenario.dataset_version.error_count:
         messages.error(request, "Select a valid dataset before adding constraints.")
         return redirect("constraints:choose", project_id=project_id, scenario_id=scenario_id)
-    form = _form(request, constraint_type, foundations, vessel, columns)
+    form = _form(request, scenario, constraint_type, foundations, vessel, columns)
     if request.method == "POST" and form.is_valid():
         order = (scenario.constraints.aggregate(maximum=Max("display_order"))["maximum"] or 0) + 1
         Constraint.objects.create(
@@ -80,6 +80,7 @@ def constraint_create(request, project_id: int, scenario_id: int, constraint_typ
             enforcement=form.cleaned_data["enforcement"],
             severity=form.cleaned_data["severity"],
             scope=form.cleaned_data.get("scope") or "",
+            package=form.cleaned_data.get("package") or "FOU",
             parameters_json=form.cleaned_data["parameters"],
             display_order=order,
         )
@@ -98,12 +99,17 @@ def constraint_edit(request, project_id: int, scenario_id: int, constraint_id: i
     scenario = constraint.scenario
     form = ConstraintLevelForm(
         request.POST or None,
-        initial={"enforcement": constraint.enforcement, "severity": constraint.severity},
+        initial={
+            "package": constraint.package or "FOU",
+            "enforcement": constraint.enforcement,
+            "severity": constraint.severity,
+        },
     )
     if request.method == "POST" and form.is_valid():
+        constraint.package = form.cleaned_data["package"]
         constraint.enforcement = form.cleaned_data["enforcement"]
         constraint.severity = form.cleaned_data["severity"]
-        constraint.save(update_fields=["enforcement", "severity", "updated_at"])
+        constraint.save(update_fields=["package", "enforcement", "severity", "updated_at"])
         messages.success(request, "Constraint type and severity updated.")
         return redirect("constraints:list", project_id=project_id, scenario_id=scenario_id)
     return render(
@@ -139,21 +145,14 @@ def constraint_delete(request, project_id: int, scenario_id: int, constraint_id:
     return redirect("constraints:list", project_id=project_id, scenario_id=scenario_id)
 
 
-def _form(
-    request, constraint_type, foundations, vessel, columns, instance: Constraint | None = None
-):
+def _form(request, scenario, constraint_type, foundations, vessel, columns):
     included_ids = [item.foundation_id for item in foundations if item.include]
+    dataset = scenario.dataset_version
+    if dataset is not None:
+        included_ids.extend(row.cable_id for row in dataset.cables.all() if row.include)
+        included_ids.extend(row.wtg_id for row in dataset.wtg_locations.all() if row.include)
     initial = None
     initial_parameters = None
-    if instance is not None and request.method != "POST":
-        initial = {
-            "name": instance.name,
-            "description": instance.description,
-            "enforcement": instance.enforcement,
-            "severity": instance.severity,
-            "active": instance.active,
-        }
-        initial_parameters = instance.parameters_json
     return ConstraintForm(
         data=request.POST or None,
         constraint_type=constraint_type,

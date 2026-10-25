@@ -10,11 +10,12 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 
 from apps.datasets.models import (
-    DatasetConstraint,
+    Cable,
     DatasetIssue,
-    DatasetSetting,
     DatasetVersion,
     Foundation,
+    ProgrammeSlot,
+    WtgLocation,
 )
 from apps.datasets.services.parsing import UploadRejected, parse_workbook
 from apps.projects.models import Project
@@ -44,8 +45,12 @@ def create_dataset_version(
             version_number=version_number,
             original_filename=Path(filename).name[:255],
             content_sha256=hashlib.sha256(content).hexdigest(),
-            row_count=len(parsed.foundations),
-            included_count=sum(1 for item in parsed.foundations if item.include),
+            row_count=len(parsed.foundations) + len(parsed.cables) + len(parsed.wtg_rows),
+            included_count=(
+                sum(1 for item in parsed.foundations if item.include)
+                + sum(1 for item in parsed.cables if item.include)
+                + sum(1 for item in parsed.wtg_rows if item.include)
+            ),
             error_count=parsed.error_count,
             warning_count=parsed.warning_count,
             columns_json=parsed.columns,
@@ -96,35 +101,54 @@ def create_dataset_version(
                 for issue in parsed.issues
             ]
         )
-        DatasetConstraint.objects.bulk_create(
+        Cable.objects.bulk_create(
             [
-                DatasetConstraint(
+                Cable(
                     dataset_version=version,
-                    package=item.package,
-                    name=item.name,
-                    explanation=item.explanation,
-                    enforcement=item.enforcement,
-                    severity=item.severity,
-                    reported_severity=item.reported_severity,
-                    active=item.active,
-                    constraint_type=item.constraint_type,
-                    parameters_json=item.parameters,
                     source_row=item.source_row,
-                    display_order=index,
+                    cable_id=item.cable_id,
+                    nickname=item.nickname,
+                    include=item.include,
+                    string_id=item.string_id,
+                    loop_id=item.loop_id,
+                    start_location_id=item.start_location_id,
+                    end_location_id=item.end_location_id,
+                    spider_cable=item.spider_cable,
                 )
-                for index, item in enumerate(parsed.constraints, start=1)
+                for item in parsed.cables
             ]
         )
-        DatasetSetting.objects.bulk_create(
+        WtgLocation.objects.bulk_create(
             [
-                DatasetSetting(
+                WtgLocation(
                     dataset_version=version,
-                    name=item.name,
-                    key=item.key,
-                    value=item.value,
                     source_row=item.source_row,
+                    wtg_id=item.wtg_id,
+                    include=item.include,
+                    structure=item.structure,
+                    easting_m=item.easting_m,
+                    northing_m=item.northing_m,
+                    spider_location=item.spider_location,
+                    string_label=item.string_label,
+                    jacking_difficulty=item.jacking_difficulty,
                 )
-                for item in parsed.settings
+                for item in parsed.wtg_rows
+            ]
+        )
+        ProgrammeSlot.objects.bulk_create(
+            [
+                ProgrammeSlot(
+                    dataset_version=version,
+                    source_row=item.source_row,
+                    slot=item.slot,
+                    fou_p50_start=item.fou_p50_start,
+                    fou_p50_end=item.fou_p50_end,
+                    iac_p50_start=item.iac_p50_start,
+                    iac_p50_end=item.iac_p50_end,
+                    wtg_p50_start=item.wtg_p50_start,
+                    wtg_p50_end=item.wtg_p50_end,
+                )
+                for item in parsed.programme
             ]
         )
     return version

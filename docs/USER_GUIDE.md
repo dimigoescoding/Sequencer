@@ -13,14 +13,14 @@ Sequencer stores the constraints you enter. It does not suggest a methodology, f
 
 1. Open Foundation Data.
 2. Download the template if you need the column headings.
-3. Upload an `.xlsx` workbook with `Information`, `Constraints`, and `Settings` sheets.
-4. The page confirms that the upload is stored and lists the foundation, constraint, and setting counts. The new version is kept even when it has errors, together with the original file. Versions are not edited in place. Upload a corrected workbook to create the next version.
+3. Upload an `.xlsx` workbook with `FOU data`, `IAC data`, `WTG data`, and `Programme` sheets. Any other sheet is ignored. Constraints and settings are not read from the file.
+4. The page confirms that the upload is stored and lists the FOU, IAC, WTG, and programme counts. The new version is kept even when it has errors, together with the original file. Versions are not edited in place. Upload a corrected workbook to create the next version.
 5. Read the error and warning lists. Activate a version only when it has no critical errors.
-6. The foundation table lists every row. Scroll inside the table to move through them.
+6. Open the FOU, IAC, WTG, and Programme tabs. Each table scrolls vertically through its rows.
 
-Critical errors include a missing sheet or mandatory column, a missing or duplicate WTG ID, an invalid Yes/No value, a non-positive weight, a coordinate that is not a number, or a soft constraint without a severity. A formula with no value stored in the file is an error. Sequencer does not calculate formulas. A value already stored by Excel is read and reported as a warning.
+Critical errors include a missing sheet or mandatory column, a missing or duplicate id, an invalid Include value, a non-positive weight on an included FOU row, or a coordinate that is not a number. A formula with no value stored in the file is an error. Sequencer does not calculate formulas. A value already stored by Excel is read and reported as a warning. An excluded FOU row, such as an OSS, may leave weight, spider, shallow, and jacking blank.
 
-Warnings do not block optimisation. An unknown constraint name is stored and shown, and it is not turned into a rule from its explanation.
+Warnings do not block optimisation. A cable end that is not a FOU or WTG id is a warning. The cable is kept and no location is invented.
 
 ## Correcting validation errors
 
@@ -37,17 +37,19 @@ A project can hold several scenarios on the same dataset. Example names such as 
 
 ## Settings
 
-Each scenario shows the settings from the workbook. `MP per trip` is the only setting in the supplied file. You can change its value. The number of trips is the included location count divided by `MP per trip`, rounded up. The final trip may be shorter than that capacity.
+FOU per trip applies only to foundations. WTG per trip applies only to turbines. IAC has no trip limit. Both capacities accept 1 to 20. The number of trips for a package is its included count divided by that capacity, rounded up. The final trip may be shorter.
 
-Solver time is on the same settings page. Choose 1 to 600 seconds. The stored default is 20. The generate page waits until the run finishes. A run that stops at that limit is feasible unless OR-Tools proves it optimal.
+Solver time is on the same settings page. Choose 1 to 600 seconds. The stored default is 20. One limit covers the whole programme. The generate page waits until the run finishes. A run that stops at that limit is feasible unless OR-Tools proves it optimal.
+
+Changing the dataset does not replace these values or the constraints you added.
 
 ## Constraints
 
-Open the scenario, then Constraints. The rows start from the Constraints sheet: package, name, explanation, rule, hard or soft, severity, and status. Edit a row to change hard or soft and the severity. Activate or deactivate a row, or delete it from the scenario. Add constraint offers the supported rule list. The explanation is shown as text. Sequencer does not read it as a new rule.
+Open the scenario, then Constraints. The Package column is a dropdown: FOU, IAC, or WTG. The rule is applied only to that package. Full sequence versus within trip stays a separate choice on ordering rules. Edit a row to change the package, hard or soft, and the severity. Activate or deactivate a row, or delete it. Add constraint offers the supported rule list. The explanation is shown as text. Sequencer does not read it as a new rule.
 
-A soft severity of 0.5 in the workbook is half of the internal 1–100 scale, so the solver starts at 50. You can replace that number with any severity from 1 to 100. Changing a row to hard clears its severity.
+A soft severity is a number from 1 to 100. Changing a row to hard clears its severity.
 
-Named rules in this workbook:
+Rules you can add include:
 
 - Spider locations are installed first, in any order among themselves.
 - At most one shallow location is placed on a trip.
@@ -66,7 +68,7 @@ Soft constraints add a penalty. The result can violate them. The validation tab 
 
 Open Generate Sequence. Direct conflicts are listed first, for example one foundation fixed to two trips, a position above vessel capacity, a hard group that is also a hard separation, or a fixed group that already exceeds a hard payload limit. The solver does not start until those messages are clear.
 
-Submit the form to run OR-Tools. A loading bar stays on the page until the solver finishes. Status values:
+Submit the form to run OR-Tools once for the whole programme. FOU, IAC, and WTG are activities in that one model. A cable is the activity that joins its two location ids. Package settings and constraints choose which activities they bind. Sequencer does not insert a buffer or force FOU, then IAC, then WTG. Programme P50 dates are stored per slot and are not turned into windows unless you add a constraint. A loading bar stays on the page until the solver finishes. If the model is infeasible, no partial sequence is stored. If any hard check fails, the whole run is invalid. Status values:
 
 - `OPTIMAL` — proven best scaled objective.
 - `FEASIBLE` — a valid sequence was found before the time limit. It is not claimed to be optimal.

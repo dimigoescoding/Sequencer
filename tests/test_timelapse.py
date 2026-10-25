@@ -29,7 +29,9 @@ def _run_with_coordinates():
         ),
     )
     activate_dataset(version)
-    scenario = Scenario.objects.create(project=project, name="Plot scenario", dataset_version=version)
+    scenario = Scenario.objects.create(
+        project=project, name="Plot scenario", dataset_version=version
+    )
     VesselSettings.objects.create(
         scenario=scenario, max_foundations_per_trip=2, solver_time_limit_seconds=10
     )
@@ -71,9 +73,7 @@ def test_same_trip_distance_is_captioned_and_a_trip_join_is_omitted():
         row.save(update_fields=["trip"])
     same_trip = timelapse_payload(run)
     assert same_trip["within_trip"] == "0.389 nm"
-    assert [frame["id"] for frame in same_trip["frames"]] == [
-        row.foundation_id for row in rows
-    ]
+    assert [frame["id"] for frame in same_trip["frames"]] == [row.foundation_id for row in rows]
 
     rows[1].trip = 2
     rows[1].save(update_fields=["trip"])

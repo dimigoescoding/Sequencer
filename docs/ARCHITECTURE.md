@@ -56,7 +56,7 @@ Indexes cover owner and status, project, scenario, dataset version, foundation I
 
 `find_conflicts` checks structural problems and direct contradictions: multiple fixed trips or positions, capacity, payload of foundations already forced onto one trip, grouping versus separation, missing columns, unknown foundations, and two-foundation precedence cycles. It does not call OR-Tools.
 
-`solve_order` assigns each included foundation to one global sequence position. Trip and vessel position are derived from that position and `max_foundations_per_trip`. Excluded foundations are omitted. Hard constraints are model constraints. Soft constraints add scaled penalty variables. The random seed is fixed and one search worker is used.
+`solve_programme` builds one CP-SAT model for the included FOU, IAC, and WTG activities and calls the solver once. Trip limits and constraints are filtered by package inside that model. IAC uses one trip because it has no trip limit. When only FOU activities are included, `solve_order` keeps the existing search, including the sailing-distance neighbourhood search. A foundation-only run can still be proven optimal for a small set. A joint run shares one time limit and one objective. Hard distance still outranks soft penalties from every package. Excluded rows are omitted. The random seed is fixed and one search worker is used. No buffer or package order is added by the solver.
 
 If OR-Tools returns anything other than optimal or feasible, the order is empty and no sequence rows are written.
 

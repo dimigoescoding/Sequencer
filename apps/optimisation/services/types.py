@@ -41,6 +41,7 @@ class VesselConfig:
     transit_speed_knots: Decimal | None = None
     harbour_easting_m: Decimal | None = None
     harbour_northing_m: Decimal | None = None
+    wtg_per_trip: int = 4
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,7 @@ class ConstraintInput:
     scope: str = ""
     display_order: int = 0
     constraint_id: int | None = None
+    package: str = "FOU"
 
 
 @dataclass
@@ -78,6 +80,7 @@ class SequenceRow:
     soft_penalty: int
     governing_constraints: str
     notes: str
+    package: str = "FOU"
 
 
 @dataclass
@@ -95,6 +98,16 @@ class TripRow:
     payload_check: str
     position_check: str
     overall_trip_check: str
+    package: str = "FOU"
+
+
+@dataclass
+class CampaignResult:
+    package: str
+    items: list[FoundationInput]
+    order: list[str]
+    vessel: VesselConfig
+    constraints: list[ConstraintInput]
 
 
 @dataclass

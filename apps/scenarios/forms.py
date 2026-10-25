@@ -1,8 +1,5 @@
-from decimal import Decimal
-
 from django import forms
 
-from apps.datasets.services.catalogue import setting_key
 from apps.scenarios.models import Scenario, VesselSettings
 from apps.ui import apply_bootstrap
 
@@ -39,61 +36,70 @@ class VesselSettingsForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self.fields["max_foundations_per_trip"].label = "FOU per trip"
+        self.fields["wtg_per_trip"].label = "WTG per trip"
         self.fields["max_foundations_per_trip"].min_value = 1
         self.fields["max_foundations_per_trip"].max_value = 20
+        self.fields["wtg_per_trip"].min_value = 1
+        self.fields["wtg_per_trip"].max_value = 20
         self.fields["solver_time_limit_seconds"].min_value = 1
         self.fields["solver_time_limit_seconds"].max_value = 600
         apply_bootstrap(self)
 
     def clean_max_foundations_per_trip(self):
-        value = self.cleaned_data["max_foundations_per_trip"]
-        if value < 1 or value > 20:
-            raise forms.ValidationError("MVP 1 accepts 1 to 20 foundations per trip.")
-        return value
+        return _trip_capacity(self.cleaned_data["max_foundations_per_trip"], "FOU per trip")
+
+    def clean_wtg_per_trip(self):
+        return _trip_capacity(self.cleaned_data["wtg_per_trip"], "WTG per trip")
 
     def clean_solver_time_limit_seconds(self):
-        value = self.cleaned_data["solver_time_limit_seconds"]
-        if value < 1 or value > 600:
-            raise forms.ValidationError("Use a solver time limit from 1 to 600 seconds.")
-        return value
+        return _solver_time(self.cleaned_data["solver_time_limit_seconds"])
 
 
-class WorkbookSettingsForm(forms.Form):
-    """Edit workbook setting values and the solver time limit."""
+class ProgrammeSettingsForm(forms.ModelForm):
+    """FOU per trip, WTG per trip, and the shared solver time limit."""
 
-    def __init__(self, definitions: list[tuple[str, str]], *args, **kwargs) -> None:
+    class Meta:
+        model = VesselSettings
+        fields = ["max_foundations_per_trip", "wtg_per_trip", "solver_time_limit_seconds"]
+        labels = {
+            "max_foundations_per_trip": "FOU per trip",
+            "wtg_per_trip": "WTG per trip",
+            "solver_time_limit_seconds": "Solver time (seconds)",
+        }
+        help_texts = {
+            "max_foundations_per_trip": "Used only for FOU. Trip number and vessel position for foundations come from this capacity.",
+            "wtg_per_trip": "Used only for WTG. IAC is ordered without a trip limit.",
+            "solver_time_limit_seconds": "How long the one programme solve may run, from 1 to 600 seconds. The page waits until the run finishes.",
+        }
+
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.definitions = definitions
-        for index, (name, value) in enumerate(definitions):
-            self.fields[f"value_{index}"] = forms.DecimalField(
-                label=name,
-                initial=value,
-                help_text="Loaded from the workbook. You can change this value.",
-            )
-        self.fields["solver_time_limit_seconds"] = forms.IntegerField(
-            min_value=1,
-            max_value=600,
-            label="Solver time (seconds)",
-            help_text="How long the solver may run, from 1 to 600 seconds. The page waits until the run finishes. A result that stops at this limit is feasible unless OR-Tools proves it optimal.",
-        )
+        self.fields["max_foundations_per_trip"].min_value = 1
+        self.fields["max_foundations_per_trip"].max_value = 20
+        self.fields["wtg_per_trip"].min_value = 1
+        self.fields["wtg_per_trip"].max_value = 20
+        self.fields["solver_time_limit_seconds"].min_value = 1
+        self.fields["solver_time_limit_seconds"].max_value = 600
         apply_bootstrap(self)
 
-    def clean(self):
-        cleaned = super().clean()
-        for index, (name, _value) in enumerate(self.definitions):
-            key = f"value_{index}"
-            number = cleaned.get(key)
-            if number is None or setting_key(name) != "mp_per_trip":
-                continue
-            if number != number.to_integral_value() or number < 1 or number > 20:
-                self.add_error(key, "MP per trip must be a whole number from 1 to 20.")
-        return cleaned
+    def clean_max_foundations_per_trip(self):
+        return _trip_capacity(self.cleaned_data["max_foundations_per_trip"], "FOU per trip")
 
-    def value_map(self) -> dict[str, str]:
-        values: dict[str, str] = {}
-        for index, (name, _value) in enumerate(self.definitions):
-            number = self.cleaned_data[f"value_{index}"]
-            if not isinstance(number, Decimal):
-                number = Decimal(str(number))
-            values[name] = format(number, "f")
-        return values
+    def clean_wtg_per_trip(self):
+        return _trip_capacity(self.cleaned_data["wtg_per_trip"], "WTG per trip")
+
+    def clean_solver_time_limit_seconds(self):
+        return _solver_time(self.cleaned_data["solver_time_limit_seconds"])
+
+
+def _trip_capacity(value: int, label: str) -> int:
+    if value < 1 or value > 20:
+        raise forms.ValidationError(f"{label} must be a whole number from 1 to 20.")
+    return value
+
+
+def _solver_time(value: int) -> int:
+    if value < 1 or value > 600:
+        raise forms.ValidationError("Use a solver time limit from 1 to 600 seconds.")
+    return value

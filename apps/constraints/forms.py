@@ -10,8 +10,17 @@ from apps.constraints.services.parameters import validate_parameters
 from apps.optimisation.services.types import FoundationInput, VesselConfig
 from apps.ui import apply_bootstrap
 
+PACKAGE_CHOICES = [("FOU", "FOU"), ("IAC", "IAC"), ("WTG", "WTG")]
+
 
 class ConstraintForm(forms.Form):
+    package = forms.ChoiceField(
+        choices=PACKAGE_CHOICES,
+        initial="FOU",
+        required=False,
+        label="Package",
+        help_text="FOU, IAC, or WTG. The rule is applied only to that package inside the one programme.",
+    )
     name = forms.CharField(max_length=200)
     description = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}))
     enforcement = forms.ChoiceField(
@@ -219,6 +228,7 @@ class ConstraintForm(forms.Form):
             self.add_error("severity", "Soft constraints require a severity from 1 to 100.")
         if cleaned.get("enforcement") == "hard":
             cleaned["severity"] = None
+        cleaned["package"] = cleaned.get("package") or "FOU"
         if self.errors:
             return cleaned
         try:
@@ -236,6 +246,7 @@ class ConstraintForm(forms.Form):
             self.add_error(None, message)
         cleaned["parameters"] = parameters
         cleaned["scope"] = str(parameters.get("scope") or "")
+        cleaned["package"] = cleaned.get("package") or "FOU"
         return cleaned
 
     def build_parameters(self, cleaned: dict) -> dict:
@@ -363,8 +374,9 @@ class ConstraintForm(forms.Form):
 
 
 class ConstraintLevelForm(forms.Form):
-    """Change hard or soft, and the severity, without rewriting the rule parameters."""
+    """Change package, hard or soft, and the severity, without rewriting the rule parameters."""
 
+    package = forms.ChoiceField(choices=PACKAGE_CHOICES, label="Package")
     enforcement = forms.ChoiceField(
         label="Type",
         choices=[("hard", "Hard"), ("soft", "Soft")],

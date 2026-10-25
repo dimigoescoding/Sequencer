@@ -10,7 +10,13 @@ from typing import Any
 
 from apps.optimisation.services.types import FoundationInput
 
-BOOLEAN_ATTRIBUTES = {"Include", "Punch_Through", "Spider location", "Shallow location"}
+BOOLEAN_ATTRIBUTES = {
+    "Include",
+    "Punch_Through",
+    "Spider location",
+    "Shallow location",
+    "Spider cable",
+}
 NUMERIC_ATTRIBUTES = {
     "Weight_t",
     "Delivery_Sequence",
@@ -30,8 +36,16 @@ STRING_ATTRIBUTES = {
     "Delivery_Batch",
     "Notes",
     "Jacking difficulty",
+    "Jacking difficulty WTG",
     "String",
     "Structure",
+    "Cable ID",
+    "Nickname",
+    "String ID",
+    "Loop ID",
+    "Start location",
+    "End location",
+    "Soil difficulty",
 }
 ALL_ATTRIBUTES = BOOLEAN_ATTRIBUTES | NUMERIC_ATTRIBUTES | STRING_ATTRIBUTES
 

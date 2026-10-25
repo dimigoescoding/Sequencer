@@ -8,6 +8,7 @@ from apps.exports.services.workbook import build_run_workbook, export_filename
 from apps.optimisation.services.timelapse import timelapse_payload
 
 SEQUENCE_SORTS = {
+    "package",
     "installation_sequence",
     "trip",
     "vessel_position",
@@ -32,7 +33,7 @@ def run_detail(request, run_id: int):
         sort = "installation_sequence"
     if request.GET.get("dir") == "desc":
         sort = f"-{sort}"
-    rows = rows.order_by(sort, "id")
+    rows = rows.order_by(sort, "package", "installation_sequence", "id")
     tab = request.GET.get("tab", "sequence")
     return render(
         request,

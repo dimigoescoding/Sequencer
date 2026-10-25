@@ -43,6 +43,7 @@ class VesselSettings(models.Model):
         Scenario, on_delete=models.CASCADE, related_name="vessel_settings"
     )
     max_foundations_per_trip = models.PositiveIntegerField(default=4)
+    wtg_per_trip = models.PositiveIntegerField(default=4)
     allow_partial_final_trip = models.BooleanField(default=True)
     base_maximum_trip_payload_t = models.DecimalField(
         max_digits=14, decimal_places=3, null=True, blank=True
@@ -59,6 +60,10 @@ class VesselSettings(models.Model):
             models.CheckConstraint(
                 condition=models.Q(max_foundations_per_trip__gte=1),
                 name="vessel_capacity_at_least_one",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(wtg_per_trip__gte=1),
+                name="wtg_per_trip_at_least_one",
             ),
             models.CheckConstraint(
                 condition=models.Q(solver_time_limit_seconds__gte=1),

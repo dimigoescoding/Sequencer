@@ -34,8 +34,8 @@ def dataset_index(request, project_id: int):
             "form": form,
             "versions": project.dataset_versions.all(),
             "dataset": dataset,
-            "foundations": _foundations(request, dataset),
             "issues": dataset.issues.all() if dataset else [],
+            **_sheet_context(request, dataset),
         },
     )
 
@@ -58,8 +58,8 @@ def dataset_upload(request, project_id: int):
         else:
             summary = (
                 f"Upload complete. Version {version.version_number} is stored with "
-                f"{version.row_count} foundations, {version.constraint_rows.count()} constraints, "
-                f"and {version.setting_rows.count()} settings."
+                f"{version.foundations.count()} FOU rows, {version.cables.count()} IAC rows, "
+                f"{version.wtg_locations.count()} WTG rows, and {version.programme_slots.count()} programme slots."
             )
             if version.error_count:
                 messages.error(
@@ -98,9 +98,9 @@ def dataset_version(request, project_id: int, version_id: int):
         {
             "project": project,
             "dataset": version,
-            "foundations": _foundations(request, version),
             "issues": version.issues.all(),
             "scenarios": project.scenarios.select_related("vessel_settings"),
+            **_sheet_context(request, version),
         },
     )
 
@@ -129,6 +129,59 @@ def dataset_original(request, project_id: int, version_id: int):
     return FileResponse(
         handle, as_attachment=True, filename=version.original_filename or "Foundation_Input.xlsx"
     )
+
+
+def _sheet_context(request, dataset):
+    sheet = request.GET.get("sheet", "fou")
+    if sheet not in {"fou", "iac", "wtg", "programme"}:
+        sheet = "fou"
+    return {
+        "sheet": sheet,
+        "foundations": _foundations(request, dataset) if sheet == "fou" else [],
+        "cables": _cables(request, dataset) if sheet == "iac" else [],
+        "wtgs": _wtgs(request, dataset) if sheet == "wtg" else [],
+        "slots": _slots(request, dataset) if sheet == "programme" else [],
+    }
+
+
+def _cables(request, dataset):
+    if dataset is None:
+        return []
+    rows = dataset.cables.all()
+    query = request.GET.get("q", "").strip()
+    if query:
+        rows = rows.filter(cable_id__icontains=query)
+    include = request.GET.get("include", "")
+    if include == "yes":
+        rows = rows.filter(include=True)
+    elif include == "no":
+        rows = rows.filter(include=False)
+    return rows.order_by("source_row", "id")
+
+
+def _wtgs(request, dataset):
+    if dataset is None:
+        return []
+    rows = dataset.wtg_locations.all()
+    query = request.GET.get("q", "").strip()
+    if query:
+        rows = rows.filter(wtg_id__icontains=query)
+    include = request.GET.get("include", "")
+    if include == "yes":
+        rows = rows.filter(include=True)
+    elif include == "no":
+        rows = rows.filter(include=False)
+    return rows.order_by("source_row", "id")
+
+
+def _slots(request, dataset):
+    if dataset is None:
+        return []
+    rows = dataset.programme_slots.all()
+    query = request.GET.get("q", "").strip()
+    if query.isdigit():
+        rows = rows.filter(slot=int(query))
+    return rows.order_by("slot", "id")
 
 
 def _foundations(request, dataset):

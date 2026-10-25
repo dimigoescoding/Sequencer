@@ -69,6 +69,7 @@ class OptimisationRun(models.Model):
 
 class SequenceResult(models.Model):
     run = models.ForeignKey(OptimisationRun, on_delete=models.CASCADE, related_name="sequence_rows")
+    package = models.CharField(max_length=8, default="FOU")
     installation_sequence = models.PositiveIntegerField()
     trip = models.PositiveIntegerField()
     vessel_position = models.PositiveIntegerField()
@@ -92,9 +93,9 @@ class SequenceResult(models.Model):
     notes = models.TextField(blank=True)
 
     class Meta:
-        ordering = ["installation_sequence"]
+        ordering = ["package", "installation_sequence"]
         indexes = [
-            models.Index(fields=["run", "installation_sequence"]),
+            models.Index(fields=["run", "package", "installation_sequence"]),
             models.Index(fields=["run", "foundation_id"]),
             models.Index(fields=["run", "trip"]),
         ]
@@ -102,6 +103,7 @@ class SequenceResult(models.Model):
 
 class TripResult(models.Model):
     run = models.ForeignKey(OptimisationRun, on_delete=models.CASCADE, related_name="trip_rows")
+    package = models.CharField(max_length=8, default="FOU")
     trip = models.PositiveIntegerField()
     foundation_count = models.PositiveIntegerField()
     foundations_in_order = models.TextField(blank=True)
@@ -119,8 +121,8 @@ class TripResult(models.Model):
     overall_trip_check = models.CharField(max_length=32, blank=True)
 
     class Meta:
-        ordering = ["trip"]
-        indexes = [models.Index(fields=["run", "trip"])]
+        ordering = ["package", "trip"]
+        indexes = [models.Index(fields=["run", "package", "trip"])]
 
 
 class ValidationResult(models.Model):

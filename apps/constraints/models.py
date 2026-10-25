@@ -10,6 +10,11 @@ class Constraint(models.Model):
         HARD = "hard", "Hard"
         SOFT = "soft", "Soft"
 
+    class Package(models.TextChoices):
+        FOU = "FOU", "FOU"
+        IAC = "IAC", "IAC"
+        WTG = "WTG", "WTG"
+
     scenario = models.ForeignKey(
         "scenarios.Scenario", on_delete=models.CASCADE, related_name="constraints"
     )
@@ -20,6 +25,7 @@ class Constraint(models.Model):
     enforcement = models.CharField(max_length=8, choices=Enforcement.choices)
     severity = models.PositiveSmallIntegerField(null=True, blank=True)
     scope = models.CharField(max_length=32, blank=True)
+    package = models.CharField(max_length=8, choices=Package.choices, default=Package.FOU)
     parameters_json = models.JSONField(default=dict)
     display_order = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -59,7 +59,9 @@ def test_project_tabs_omit_vessel_settings_and_optimisation_runs(client):
 def test_generate_page_has_a_hidden_loading_bar(client):
     owner, project, scenario = _project()
     client.force_login(owner)
-    body = client.get(reverse("scenarios:generate", args=[project.pk, scenario.pk])).content.decode()
+    body = client.get(
+        reverse("scenarios:generate", args=[project.pk, scenario.pk])
+    ).content.decode()
     assert 'id="generate-progress"' in body
     assert "progress-bar-animated" in body
     assert "A sequence is running." in body

@@ -10,7 +10,7 @@ from apps.projects.models import Project
 from apps.scenarios.models import Scenario, VesselSettings
 from django.contrib.auth import get_user_model
 from django.urls import reverse
-from tests.support import information_workbook, location_row
+from tests.support import information_workbook, install_named_constraints, location_row
 
 pytestmark = pytest.mark.django_db
 
@@ -79,9 +79,7 @@ def test_owner_can_log_in_and_open_the_project(client):
 
 def test_user_can_edit_constraint_level_add_a_constraint_and_set_solver_time(client):
     owner, project, scenario, _run = _owned_run()
-    from apps.scenarios.services.sync import sync_scenario_from_dataset
-
-    sync_scenario_from_dataset(scenario)
+    install_named_constraints(scenario)
     client.force_login(owner)
     row = scenario.constraints.get(name="Jacking difficulty")
     assert row.active is False
@@ -95,7 +93,7 @@ def test_user_can_edit_constraint_level_add_a_constraint_and_set_solver_time(cli
     kept = dict(sailing.parameters_json)
     edited = client.post(
         reverse("constraints:edit", args=[project.pk, scenario.pk, sailing.pk]),
-        {"enforcement": "soft", "severity": "80"},
+        {"package": "FOU", "enforcement": "soft", "severity": "80"},
     )
     assert edited.status_code == 302
     sailing.refresh_from_db()
@@ -106,7 +104,7 @@ def test_user_can_edit_constraint_level_add_a_constraint_and_set_solver_time(cli
     spider = scenario.constraints.get(name="Spider locations FOU")
     missing_severity = client.post(
         reverse("constraints:edit", args=[project.pk, scenario.pk, spider.pk]),
-        {"enforcement": "soft"},
+        {"package": "FOU", "enforcement": "soft"},
     )
     assert missing_severity.status_code == 200
     spider.refresh_from_db()
@@ -114,7 +112,7 @@ def test_user_can_edit_constraint_level_add_a_constraint_and_set_solver_time(cli
     assert spider.severity is None
     made_soft = client.post(
         reverse("constraints:edit", args=[project.pk, scenario.pk, spider.pk]),
-        {"enforcement": "soft", "severity": "40"},
+        {"package": "FOU", "enforcement": "soft", "severity": "40"},
     )
     assert made_soft.status_code == 302
     spider.refresh_from_db()
@@ -123,7 +121,7 @@ def test_user_can_edit_constraint_level_add_a_constraint_and_set_solver_time(cli
 
     made_hard = client.post(
         reverse("constraints:edit", args=[project.pk, scenario.pk, spider.pk]),
-        {"enforcement": "hard", "severity": "40"},
+        {"package": "FOU", "enforcement": "hard", "severity": "40"},
     )
     assert made_hard.status_code == 302
     spider.refresh_from_db()
@@ -135,7 +133,13 @@ def test_user_can_edit_constraint_level_add_a_constraint_and_set_solver_time(cli
     assert b"Maximum trip payload" in choose.content
     added = client.post(
         reverse("constraints:create", args=[project.pk, scenario.pk, "maximum_trip_payload"]),
-        {"name": "Trip payload", "enforcement": "hard", "active": "on", "maximum_payload_t": "500"},
+        {
+            "package": "FOU",
+            "name": "Trip payload",
+            "enforcement": "hard",
+            "active": "on",
+            "maximum_payload_t": "500",
+        },
     )
     assert added.status_code == 302
     created = scenario.constraints.get(name="Trip payload")
@@ -147,20 +151,30 @@ def test_user_can_edit_constraint_level_add_a_constraint_and_set_solver_time(cli
 
     settings = client.get(reverse("scenarios:settings", args=[project.pk, scenario.pk]))
     assert settings.status_code == 200
-    assert b"MP per trip" in settings.content
+    assert b"FOU per trip" in settings.content
+    assert b"WTG per trip" in settings.content
     assert b"Solver time" in settings.content
     assert b"Harbour" not in settings.content
     saved = client.post(
         reverse("scenarios:settings", args=[project.pk, scenario.pk]),
-        {"value_0": "5", "solver_time_limit_seconds": "12"},
+        {
+            "max_foundations_per_trip": "5",
+            "wtg_per_trip": "3",
+            "solver_time_limit_seconds": "12",
+        },
     )
     assert saved.status_code == 302
     scenario.vessel_settings.refresh_from_db()
     assert scenario.vessel_settings.max_foundations_per_trip == 5
+    assert scenario.vessel_settings.wtg_per_trip == 3
     assert scenario.vessel_settings.solver_time_limit_seconds == 12
     rejected = client.post(
         reverse("scenarios:settings", args=[project.pk, scenario.pk]),
-        {"value_0": "5", "solver_time_limit_seconds": "601"},
+        {
+            "max_foundations_per_trip": "5",
+            "wtg_per_trip": "3",
+            "solver_time_limit_seconds": "601",
+        },
     )
     assert rejected.status_code == 200
     scenario.vessel_settings.refresh_from_db()
@@ -169,9 +183,6 @@ def test_user_can_edit_constraint_level_add_a_constraint_and_set_solver_time(cli
 
 def test_earliest_trip_page_saves_an_attribute_rule(client):
     owner, project, scenario, _run = _owned_run()
-    from apps.scenarios.services.sync import sync_scenario_from_dataset
-
-    sync_scenario_from_dataset(scenario)
     client.force_login(owner)
     page = client.get(
         reverse("constraints:create", args=[project.pk, scenario.pk, "earliest_sequence"])
@@ -183,6 +194,7 @@ def test_earliest_trip_page_saves_an_attribute_rule(client):
     added = client.post(
         reverse("constraints:create", args=[project.pk, scenario.pk, "earliest_sequence"]),
         {
+            "package": "IAC",
             "name": "No shallow first",
             "description": "Keep shallow locations out of trip 1",
             "enforcement": "hard",
@@ -197,6 +209,7 @@ def test_earliest_trip_page_saves_an_attribute_rule(client):
     )
     assert added.status_code == 302
     shallow = scenario.constraints.get(name="No shallow first")
+    assert shallow.package == "IAC"
     assert shallow.parameters_json == {
         "attribute": "Shallow location",
         "operator": "equals",

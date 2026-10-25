@@ -23,13 +23,8 @@
   </div></div></div>
   <div class="col-md-4"><div class="card h-100"><div class="card-body">
     <h2 class="h6">Settings</h2>
-    {% if scenario.vessel_settings.workbook_values %}
-      {% for name, value in scenario.vessel_settings.workbook_values.items %}
-        <p class="mb-1">{{ name }}: {{ value }}</p>
-      {% endfor %}
-    {% else %}
-      <p class="mb-1">MP per trip: {{ scenario.vessel_settings.max_foundations_per_trip }}</p>
-    {% endif %}
+    <p class="mb-1">FOU per trip: {{ scenario.vessel_settings.max_foundations_per_trip }}</p>
+    <p class="mb-1">WTG per trip: {{ scenario.vessel_settings.wtg_per_trip }}</p>
     <p class="mb-1">Solver time: {{ scenario.vessel_settings.solver_time_limit_seconds }} seconds</p>
     <a href="{% url 'scenarios:settings' project.pk scenario.pk %}">Edit settings</a>
   </div></div></div>

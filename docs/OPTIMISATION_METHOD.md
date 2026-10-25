@@ -10,6 +10,12 @@ For each included foundation and each global sequence position there is a Boolea
 
 Excluded foundations (`Include` false) are not decision variables and cannot appear in the order.
 
+## One programme
+
+FOU locations, IAC cables, and WTG locations are activities in one model when more than one package has included rows. Each package has its own sequence and its own trip numbering. FOU uses FOU per trip. WTG uses WTG per trip. IAC is a single order. A constraint's package selects the activities it binds. The objective is the sum of the package terms, minimised once. An infeasible model stores no sequence for any package. Independent validation runs on each package order, and one hard failure makes the run invalid.
+
+A campaign that includes only foundations still uses the search described below.
+
 ## Trip and vessel position
 
 With a maximum of `N` foundations per trip:

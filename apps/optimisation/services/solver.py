@@ -33,7 +33,12 @@ from apps.optimisation.services.scaling import (
     SOLVER_SEED,
     weight_kg,
 )
-from apps.optimisation.services.types import ConstraintInput, FoundationInput, VesselConfig
+from apps.optimisation.services.types import (
+    CampaignResult,
+    ConstraintInput,
+    FoundationInput,
+    VesselConfig,
+)
 
 
 def solve_order(
@@ -70,6 +75,171 @@ def solve_order(
     runtime = time.perf_counter() - started
     message = _status_message(status, active)
     return status, objective, runtime, message, order
+
+
+def solve_programme(
+    foundations: list[FoundationInput],
+    cables: list[FoundationInput],
+    turbines: list[FoundationInput],
+    vessel: VesselConfig,
+    constraints: list[ConstraintInput],
+) -> tuple[str, int | None, float, str, list[CampaignResult]]:
+    """Solve FOU, IAC, and WTG in one model when more than foundations are included.
+
+    A foundation-only campaign keeps the existing search, including the longer
+    sailing-distance search. Packages do not impose an order on each other.
+    """
+    started = time.perf_counter()
+    fou_items = [item for item in foundations if item.include]
+    iac_items = [item for item in cables if item.include]
+    wtg_items = [item for item in turbines if item.include]
+    grouped = {
+        "FOU": [item for item in constraints if _package(item) == "FOU"],
+        "IAC": [item for item in constraints if _package(item) == "IAC"],
+        "WTG": [item for item in constraints if _package(item) == "WTG"],
+    }
+    if not fou_items and not iac_items and not wtg_items:
+        return (
+            "ERROR",
+            None,
+            time.perf_counter() - started,
+            "No included FOU, IAC, or WTG activities are available to sequence.",
+            [],
+        )
+    if not iac_items and not wtg_items:
+        status, objective, runtime, message, order = solve_order(
+            foundations, vessel, grouped["FOU"]
+        )
+        return (
+            status,
+            objective,
+            runtime,
+            message,
+            [
+                CampaignResult(
+                    "FOU",
+                    fou_items,
+                    order,
+                    vessel,
+                    [item for item in grouped["FOU"] if item.active],
+                )
+            ],
+        )
+
+    model = cp_model.CpModel()
+    builders: list[_Builder] = []
+    plans: list[tuple[str, list[FoundationInput], VesselConfig, list[ConstraintInput]]] = []
+    if fou_items:
+        _add_campaign(model, builders, plans, "FOU", fou_items, vessel, grouped["FOU"], "fou")
+    if iac_items:
+        _add_campaign(
+            model,
+            builders,
+            plans,
+            "IAC",
+            iac_items,
+            replace(vessel, max_foundations_per_trip=len(iac_items)),
+            grouped["IAC"],
+            "iac",
+        )
+    if wtg_items:
+        _add_campaign(
+            model,
+            builders,
+            plans,
+            "WTG",
+            wtg_items,
+            replace(vessel, max_foundations_per_trip=max(vessel.wtg_per_trip, 1)),
+            grouped["WTG"],
+            "wtg",
+        )
+    terms = _combined_objective(builders)
+    if terms:
+        model.Minimize(sum(terms))
+    solver = _solver(vessel.solver_time_limit_seconds)
+    status = _status_code(solver.Solve(model))
+    runtime = time.perf_counter() - started
+    active = [item for item in constraints if item.active]
+    message = _status_message(status, active)
+    message = (
+        message
+        + " The included packages were solved together as one programme. "
+        + "No package order or buffer was added."
+    )
+    if status not in {"OPTIMAL", "FEASIBLE"}:
+        return status, None, runtime, message, []
+    campaigns: list[CampaignResult] = []
+    for builder, (package, items, package_vessel, package_constraints) in zip(
+        builders, plans, strict=True
+    ):
+        order = builder.read_order(solver)
+        if any(item == "" for item in order):
+            return (
+                "ERROR",
+                None,
+                runtime,
+                "The solver model could not be solved. No sequence was created.",
+                [],
+            )
+        campaigns.append(
+            CampaignResult(
+                package,
+                items,
+                order,
+                package_vessel,
+                [item for item in package_constraints if item.active],
+            )
+        )
+    objective = int(round(solver.ObjectiveValue())) if terms else 0
+    return status, objective, runtime, message, campaigns
+
+
+def _package(constraint: ConstraintInput) -> str:
+    package = str(getattr(constraint, "package", "") or "FOU").strip().upper()
+    if package not in {"FOU", "IAC", "WTG"}:
+        return "FOU"
+    return package
+
+
+def _add_campaign(model, builders, plans, package, items, vessel, constraints, prefix) -> None:
+    builder = _Builder(items, vessel, model=model, name_prefix=prefix)
+    for constraint in constraints:
+        if constraint.active:
+            builder.add_constraint(constraint)
+    builders.append(builder)
+    plans.append((package, items, vessel, constraints))
+
+
+def _combined_objective(builders: list[_Builder]) -> list[Any]:
+    soft: list[Any] = []
+    hard: list[Any] = []
+    for builder in builders:
+        soft.extend(builder.objective_terms)
+        hard.extend(builder.hard_distance_terms)
+    terms = list(soft)
+    if hard:
+        weight = len(soft) * 100 * NORM + 1
+        terms.extend(weight * raw for raw in hard)
+    return terms
+
+
+def _solver(time_limit: int) -> cp_model.CpSolver:
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = float(max(time_limit, 1))
+    solver.parameters.random_seed = SOLVER_SEED
+    solver.parameters.num_search_workers = 1
+    solver.parameters.repair_hint = True
+    return solver
+
+
+def _status_code(code: int) -> str:
+    return {
+        cp_model.OPTIMAL: "OPTIMAL",
+        cp_model.FEASIBLE: "FEASIBLE",
+        cp_model.INFEASIBLE: "INFEASIBLE",
+        cp_model.UNKNOWN: "UNKNOWN",
+        cp_model.MODEL_INVALID: "ERROR",
+    }.get(code, "ERROR")
 
 
 def _starting_route(
@@ -157,7 +327,9 @@ def _search_complete_path(
                 right = min(len(included), left + width)
                 if right - left < 2:
                     continue
-                slice_limit = min(3.0 if width <= capacity * 2 else 5.0, deadline - time.perf_counter())
+                slice_limit = min(
+                    3.0 if width <= capacity * 2 else 5.0, deadline - time.perf_counter()
+                )
                 if slice_limit < 0.2:
                     break
                 candidate = _reoptimize_window(
@@ -215,7 +387,10 @@ def _greedy_route(
     checks = _position_checks(foundations, vessel, active)
     quotas = []
     for constraint in active:
-        if constraint.enforcement != "hard" or constraint.constraint_type != "maximum_matching_per_trip":
+        if (
+            constraint.enforcement != "hard"
+            or constraint.constraint_type != "maximum_matching_per_trip"
+        ):
             continue
         matched = {
             item.foundation_id for item in matching_foundations(included, constraint.parameters)
@@ -306,9 +481,7 @@ def _relaxation_bound(
     ]
     if len(prefixes) != 1:
         return bound
-    names = {
-        row.foundation_id for row in matching_foundations(included, prefixes[0].parameters)
-    }
+    names = {row.foundation_id for row in matching_foundations(included, prefixes[0].parameters)}
     matched = [index for index, item in enumerate(included) if item.foundation_id in names]
     if not 2 <= len(matched) <= 16 or len(matched) >= len(included):
         return bound
@@ -524,13 +697,21 @@ def _status_message(status: str, constraints: list[ConstraintInput]) -> str:
 
 
 class _Builder:
-    def __init__(self, included: list[FoundationInput], vessel: VesselConfig) -> None:
+    def __init__(
+        self,
+        included: list[FoundationInput],
+        vessel: VesselConfig,
+        *,
+        model: cp_model.CpModel | None = None,
+        name_prefix: str = "",
+    ) -> None:
         self.included = included
         self.vessel = vessel
+        self.name_prefix = name_prefix
         self.n = len(included)
         self.capacity = vessel.max_foundations_per_trip
         self.trips = required_trips(self.n, self.capacity)
-        self.model = cp_model.CpModel()
+        self.model = model if model is not None else cp_model.CpModel()
         self.index = {item.foundation_id: position for position, item in enumerate(included)}
         self.kilograms = [
             weight_kg(item.weight_t) if item.weight_t is not None else 0 for item in included
@@ -540,20 +721,30 @@ class _Builder:
         self.objective_terms: list[Any] = []
         self.hard_distance_terms: list[Any] = []
         self.x = [
-            [self.model.NewBoolVar(f"x_{foundation}_{position}") for position in range(self.n)]
+            [
+                self.model.NewBoolVar(self._var(f"x_{foundation}_{position}"))
+                for position in range(self.n)
+            ]
             for foundation in range(self.n)
         ]
         self.position_of = [
-            self.model.NewIntVar(1, max(self.n, 1), f"pos_{index}") for index in range(self.n)
+            self.model.NewIntVar(1, max(self.n, 1), self._var(f"pos_{index}"))
+            for index in range(self.n)
         ]
         self.trip_of = [
-            self.model.NewIntVar(1, max(self.trips, 1), f"trip_{index}") for index in range(self.n)
+            self.model.NewIntVar(1, max(self.trips, 1), self._var(f"trip_{index}"))
+            for index in range(self.n)
         ]
         self._add_assignment()
 
+    def _var(self, name: str) -> str:
+        if not self.name_prefix:
+            return name
+        return f"{self.name_prefix}_{name}"
+
     def _name(self, prefix: str) -> str:
         self._sequence += 1
-        return f"{prefix}_{self._sequence}"
+        return self._var(f"{prefix}_{self._sequence}")
 
     def _int(self, lower: int, upper: int, prefix: str) -> Any:
         return self.model.NewIntVar(lower, max(lower, upper), self._name(prefix))
@@ -1104,37 +1295,26 @@ class _Builder:
             for index in range(self.n):
                 self.model.AddHint(self.x[foundation][index], 1 if index == slot else 0)
 
-    def solve(self) -> tuple[str, int | None, list[str]]:
-        if self.n == 0:
-            return "ERROR", None, []
-        terms = list(self.objective_terms)
-        if self.hard_distance_terms:
-            # One metre outranks every soft penalty currently in the model.
-            weight = len(terms) * 100 * NORM + 1
-            terms.extend(weight * raw for raw in self.hard_distance_terms)
-        has_objective = bool(terms)
-        if has_objective:
-            self.model.Minimize(sum(terms))
-        solver = cp_model.CpSolver()
-        solver.parameters.max_time_in_seconds = float(self.vessel.solver_time_limit_seconds)
-        solver.parameters.random_seed = SOLVER_SEED
-        solver.parameters.num_search_workers = 1
-        solver.parameters.repair_hint = True
-        code = solver.Solve(self.model)
-        status = {
-            cp_model.OPTIMAL: "OPTIMAL",
-            cp_model.FEASIBLE: "FEASIBLE",
-            cp_model.INFEASIBLE: "INFEASIBLE",
-            cp_model.UNKNOWN: "UNKNOWN",
-            cp_model.MODEL_INVALID: "ERROR",
-        }.get(code, "ERROR")
-        if status not in {"OPTIMAL", "FEASIBLE"}:
-            return status, None, []
+    def read_order(self, solver: cp_model.CpSolver) -> list[str]:
         order = [""] * self.n
         for foundation in range(self.n):
             for position in range(self.n):
                 if solver.Value(self.x[foundation][position]):
                     order[position] = self.included[foundation].foundation_id
+        return order
+
+    def solve(self) -> tuple[str, int | None, list[str]]:
+        if self.n == 0:
+            return "ERROR", None, []
+        terms = _combined_objective([self])
+        has_objective = bool(terms)
+        if has_objective:
+            self.model.Minimize(sum(terms))
+        solver = _solver(self.vessel.solver_time_limit_seconds)
+        status = _status_code(solver.Solve(self.model))
+        if status not in {"OPTIMAL", "FEASIBLE"}:
+            return status, None, []
+        order = self.read_order(solver)
         if any(item == "" for item in order):
             return "ERROR", None, []
         objective = int(round(solver.ObjectiveValue())) if has_objective else 0

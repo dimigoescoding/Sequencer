@@ -8,7 +8,7 @@ from apps.optimisation.services.scaling import (
     MAX_INCLUDED_FOUNDATIONS,
     MAX_SOLVER_TIME_LIMIT_SECONDS,
 )
-from apps.scenarios.forms import WorkbookSettingsForm
+from apps.scenarios.forms import ProgrammeSettingsForm
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 from django.core.management import call_command
@@ -33,27 +33,40 @@ def test_database_storage_round_trip():
     assert storage.exists(name) is False
 
 
-def test_settings_form_edits_workbook_values_and_solver_time():
-    form = WorkbookSettingsForm(
-        [("MP per trip", "4")],
-        data={"value_0": "6", "solver_time_limit_seconds": "15"},
+def test_settings_form_edits_trip_limits_and_solver_time():
+    form = ProgrammeSettingsForm(
+        data={
+            "max_foundations_per_trip": "6",
+            "wtg_per_trip": "3",
+            "solver_time_limit_seconds": "15",
+        }
     )
     assert form.is_valid() is True
-    assert form.value_map() == {"MP per trip": "6"}
+    assert form.cleaned_data["max_foundations_per_trip"] == 6
+    assert form.cleaned_data["wtg_per_trip"] == 3
     assert form.cleaned_data["solver_time_limit_seconds"] == 15
-    accepted = WorkbookSettingsForm(
-        [("MP per trip", "4")],
-        data={"value_0": "4", "solver_time_limit_seconds": "600"},
+    accepted = ProgrammeSettingsForm(
+        data={
+            "max_foundations_per_trip": "4",
+            "wtg_per_trip": "4",
+            "solver_time_limit_seconds": "600",
+        }
     )
     assert accepted.is_valid() is True
-    rejected = WorkbookSettingsForm(
-        [("MP per trip", "4")],
-        data={"value_0": "60", "solver_time_limit_seconds": "15"},
+    rejected = ProgrammeSettingsForm(
+        data={
+            "max_foundations_per_trip": "60",
+            "wtg_per_trip": "4",
+            "solver_time_limit_seconds": "15",
+        }
     )
     assert rejected.is_valid() is False
-    too_long = WorkbookSettingsForm(
-        [("MP per trip", "4")],
-        data={"value_0": "4", "solver_time_limit_seconds": "601"},
+    too_long = ProgrammeSettingsForm(
+        data={
+            "max_foundations_per_trip": "4",
+            "wtg_per_trip": "4",
+            "solver_time_limit_seconds": "601",
+        }
     )
     assert too_long.is_valid() is False
     assert MAX_SOLVER_TIME_LIMIT_SECONDS == 600

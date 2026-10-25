@@ -1,15 +1,12 @@
-from decimal import Decimal
-
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 
 from apps.access import owned_project, owned_scenario
-from apps.datasets.services.catalogue import setting_key
 from apps.optimisation.services.runner import SolveBlocked, SolveBusy, blocking_messages, execute
 from apps.projects.services import duplicate_scenario
-from apps.scenarios.forms import ScenarioForm, WorkbookSettingsForm
+from apps.scenarios.forms import ProgrammeSettingsForm, ScenarioForm
 from apps.scenarios.models import VesselSettings
 from apps.scenarios.services.sync import sync_scenario_from_dataset
 
@@ -38,7 +35,7 @@ def scenario_create(request, project_id: int):
         sync_scenario_from_dataset(scenario)
         messages.success(
             request,
-            "Scenario created. Constraints and settings were loaded from the selected workbook.",
+            "Scenario created. Add constraints and set FOU per trip and WTG per trip in the app.",
         )
         return redirect(scenario)
     return render(
@@ -103,39 +100,15 @@ def scenario_delete(request, project_id: int, scenario_id: int):
 @login_required
 def vessel_settings(request, project_id: int, scenario_id: int):
     scenario = owned_scenario(request.user, project_id, scenario_id)
-    dataset = scenario.dataset_version
-    definitions = []
-    if dataset is not None:
-        stored = scenario.vessel_settings.workbook_values or {}
-        definitions = [
-            (item.name, stored.get(item.name, item.value)) for item in dataset.setting_rows.all()
-        ]
-    form = WorkbookSettingsForm(
-        definitions,
-        request.POST or None,
-        initial={"solver_time_limit_seconds": scenario.vessel_settings.solver_time_limit_seconds},
-    )
+    form = ProgrammeSettingsForm(request.POST or None, instance=scenario.vessel_settings)
     if request.method == "POST" and form.is_valid():
-        settings = scenario.vessel_settings
-        if definitions:
-            values = form.value_map()
-            settings.workbook_values = values
-            for name, raw in values.items():
-                if setting_key(name) == "mp_per_trip":
-                    settings.max_foundations_per_trip = int(Decimal(raw))
-        settings.solver_time_limit_seconds = form.cleaned_data["solver_time_limit_seconds"]
-        settings.save()
+        form.save()
         messages.success(request, "Settings saved.")
         return redirect(scenario)
     return render(
         request,
         "scenarios/settings.html",
-        {
-            "project": scenario.project,
-            "scenario": scenario,
-            "form": form,
-            "definitions": definitions,
-        },
+        {"project": scenario.project, "scenario": scenario, "form": form},
     )
 
 
