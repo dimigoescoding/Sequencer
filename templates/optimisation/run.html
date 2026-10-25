@@ -114,12 +114,14 @@
           <th><a href="{% querystring tab='sequence' sort='trip' dir='asc' %}">Trip</a></th>
           <th>Vessel_Position</th>
           <th><a href="{% querystring tab='sequence' sort='foundation_id' dir='asc' %}">Foundation_ID</a></th>
+          <th>Buffer</th>
           <th>Weight_t</th><th>Trip_Total_Weight_t</th><th>Delivery_Sequence</th><th>Sequence_Deviation</th>
           <th>Delivery_Batch</th><th>Difficulty_Value</th><th>Punch_Through</th><th>Fixed_Trip</th><th>Fixed_Position</th>
           <th>Earliest_Sequence</th><th>Latest_Sequence</th><th>Hard_Constraint_Status</th><th>Soft_Penalty</th><th>Governing_Constraints</th><th>Notes</th>
         </tr></thead>
         <tbody>{% for row in sequence_rows %}<tr>
           <td>{{ row.installation_sequence }}</td><td>{{ row.package }}</td><td>{{ row.trip }}</td><td>{{ row.vessel_position }}</td><td>{{ row.foundation_id }}</td>
+          <td>{{ row.buffer_label }}</td>
           <td>{{ row.weight_t }}</td><td>{{ row.trip_total_weight_t }}</td><td>{{ row.delivery_sequence|default:"—" }}</td><td>{{ row.sequence_deviation|default:"—" }}</td>
           <td>{{ row.delivery_batch|default:"—" }}</td><td>{{ row.difficulty_value|default:"—" }}</td>
           <td>{% if row.punch_through is None %}—{% elif row.punch_through %}Yes{% else %}No{% endif %}</td>

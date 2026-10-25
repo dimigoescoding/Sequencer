@@ -5,6 +5,7 @@ from django.shortcuts import render
 
 from apps.access import owned_run
 from apps.exports.services.workbook import build_run_workbook, export_filename
+from apps.optimisation.services.buffer import buffer_column, programme_inputs
 from apps.optimisation.services.timelapse import timelapse_payload
 
 SEQUENCE_SORTS = {
@@ -43,6 +44,10 @@ def run_detail(request, run_id: int):
         if request.GET.get("dir") == "desc":
             sort = f"-{sort}"
         rows = rows.order_by(sort, package_order, "installation_sequence", "id")
+    shown = list(rows)
+    labels = buffer_column(run.sequence_rows.all(), *programme_inputs(run.dataset_version))
+    for row in shown:
+        row.buffer_label = labels.get(row.pk, "—")
     tab = request.GET.get("tab", "sequence")
     return render(
         request,
@@ -51,7 +56,7 @@ def run_detail(request, run_id: int):
             "project": run.scenario.project,
             "scenario": run.scenario,
             "run": run,
-            "sequence_rows": rows,
+            "sequence_rows": shown,
             "trips": run.trip_rows.all(),
             "checks": run.validation_rows.all(),
             "tab": tab,

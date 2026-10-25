@@ -12,6 +12,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
 from apps.optimisation.models import OptimisationRun
+from apps.optimisation.services.buffer import buffer_column, programme_inputs
 from apps.optimisation.services.routing import nautical_miles
 
 HEADER_FILL = PatternFill("solid", fgColor="0F2C4C")
@@ -32,6 +33,7 @@ SEQUENCE_COLUMNS = [
     "Trip",
     "Vessel_Position",
     "Foundation_ID",
+    "Buffer",
     "Weight_t",
     "Trip_Total_Weight_t",
     "Delivery_Sequence",
@@ -60,8 +62,13 @@ def build_run_workbook(run: OptimisationRun) -> bytes:
     workbook = Workbook()
     sequence = workbook.active
     sequence.title = "Optimized_Sequence"
+    sequence_rows = list(run.sequence_rows.all())
+    buffers = buffer_column(sequence_rows, *programme_inputs(run.dataset_version))
     _write_table(
-        sequence, run, SEQUENCE_COLUMNS, [_sequence_values(row) for row in run.sequence_rows.all()]
+        sequence,
+        run,
+        SEQUENCE_COLUMNS,
+        [_sequence_values(row, buffers.get(row.pk, "—")) for row in sequence_rows],
     )
     _write_table(
         workbook.create_sheet("Trip_Summary"),
@@ -282,13 +289,14 @@ def _write_summary(worksheet: Worksheet, run: OptimisationRun) -> None:
     worksheet.column_dimensions["B"].width = 100
 
 
-def _sequence_values(row) -> list:
+def _sequence_values(row, buffer: str = "—") -> list:
     return [
         row.installation_sequence,
         row.package,
         row.trip,
         row.vessel_position,
         row.foundation_id,
+        buffer,
         row.weight_t,
         row.trip_total_weight_t,
         row.delivery_sequence,

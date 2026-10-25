@@ -361,3 +361,129 @@ def _mark(
                 sequence.governing_constraints = "; ".join(
                     part for part in (current, constraint.name) if part
                 )
+
+
+def programme_inputs(dataset) -> tuple[dict[str, tuple[str, str]], dict]:
+    """Cable ends and programme dates for the sequence buffer column."""
+    cable_ends: dict[str, tuple[str, str]] = {}
+    calendar: dict = {}
+    if dataset is None:
+        return cable_ends, calendar
+    for cable in dataset.cables.all():
+        cable_ends[str(cable.cable_id).casefold()] = (
+            cable.start_location_id,
+            cable.end_location_id,
+        )
+    for slot in dataset.programme_slots.all():
+        calendar[int(slot.slot)] = {
+            "FOU": (slot.fou_p50_start, slot.fou_p50_end),
+            "IAC": (slot.iac_p50_start, slot.iac_p50_end),
+            "WTG": (slot.wtg_p50_start, slot.wtg_p50_end),
+        }
+    return cable_ends, calendar
+
+
+def buffer_column(rows, cable_ends: dict[str, tuple[str, str]], calendar: dict) -> dict[int, str]:
+    """Programme-day gap shown on each installation-sequence row.
+
+    A foundation shows the gap until cabling starts at that location. A cable
+    shows the gap after each foundation end and before each turbine start. A
+    turbine shows the gap after every cable at that location is complete.
+    """
+    by_package: dict[str, list] = {"FOU": [], "IAC": [], "WTG": []}
+    for row in rows:
+        package = _row_package(row)
+        if package in by_package:
+            by_package[package].append(row)
+    fou = {_key(row.foundation_id): row for row in by_package["FOU"]}
+    wtg = {_key(row.foundation_id): row for row in by_package["WTG"]}
+    touching: dict[str, list] = {}
+    for row in by_package["IAC"]:
+        for location in _ends(cable_ends, row.foundation_id):
+            touching.setdefault(location, []).append(row)
+    labels = {}
+    for row in rows:
+        package = _row_package(row)
+        if package == "FOU":
+            labels[row.pk] = _next_gap(row, touching, calendar, "IAC", "start")
+        elif package == "WTG":
+            labels[row.pk] = _previous_gap(row, touching, calendar, "IAC", "end")
+        elif package == "IAC":
+            labels[row.pk] = _cable_gaps(row, cable_ends, fou, wtg, calendar)
+        else:
+            labels[row.pk] = "—"
+    return labels
+
+
+def _row_package(row) -> str:
+    package = str(getattr(row, "package", "") or "FOU").strip().upper()
+    return package if package in {"FOU", "IAC", "WTG"} else "FOU"
+
+
+def _key(value: str) -> str:
+    return str(value or "").strip().casefold()
+
+
+def _ends(cable_ends: dict[str, tuple[str, str]], cable_id: str) -> list[str]:
+    pair = cable_ends.get(_key(cable_id))
+    if not pair:
+        return []
+    found = []
+    for value in pair:
+        key = _key(value)
+        if key and key not in found:
+            found.append(key)
+    return found
+
+
+def _at(calendar: dict, package: str, position: int, edge: str) -> int | None:
+    window = calendar.get(position, {}).get(package)
+    if not window:
+        return None
+    value = window[0] if edge == "start" else window[1]
+    if value is None:
+        return None
+    return instant_seconds(value)
+
+
+def _days(seconds: int) -> str:
+    return f"{seconds / DAY_SECONDS:.2f} days"
+
+
+def _next_gap(row, touching: dict[str, list], calendar: dict, later: str, edge: str) -> str:
+    end = _at(calendar, "FOU", row.installation_sequence, "end")
+    cables = touching.get(_key(row.foundation_id), [])
+    starts = [_at(calendar, later, cable.installation_sequence, edge) for cable in cables]
+    if end is None or not starts or any(value is None for value in starts):
+        return "—"
+    return f"IAC {_days(min(value for value in starts if value is not None) - end)}"
+
+
+def _previous_gap(row, touching: dict[str, list], calendar: dict, earlier: str, edge: str) -> str:
+    start = _at(calendar, "WTG", row.installation_sequence, "start")
+    cables = touching.get(_key(row.foundation_id), [])
+    ends = [_at(calendar, earlier, cable.installation_sequence, edge) for cable in cables]
+    if start is None or not ends or any(value is None for value in ends):
+        return "—"
+    return f"IAC {_days(start - max(value for value in ends if value is not None))}"
+
+
+def _cable_gaps(row, cable_ends, fou: dict, wtg: dict, calendar: dict) -> str:
+    cable_start = _at(calendar, "IAC", row.installation_sequence, "start")
+    cable_end = _at(calendar, "IAC", row.installation_sequence, "end")
+    foundations = []
+    turbines = []
+    for location in _ends(cable_ends, row.foundation_id):
+        place = fou.get(location)
+        if place is not None and cable_start is not None:
+            end = _at(calendar, "FOU", place.installation_sequence, "end")
+            if end is not None:
+                foundations.append(f"{place.foundation_id} {_days(cable_start - end)}")
+        turbine = wtg.get(location)
+        if turbine is not None and cable_end is not None:
+            begin = _at(calendar, "WTG", turbine.installation_sequence, "start")
+            if begin is not None:
+                turbines.append(f"{turbine.foundation_id} {_days(begin - cable_end)}")
+    fou_text = ", ".join(foundations) if foundations else "—"
+    wtg_text = ", ".join(turbines) if turbines else "—"
+    return f"FOU {fou_text} · WTG {wtg_text}"
