@@ -42,6 +42,9 @@
           <td>{% if constraint.active %}<span class="badge text-bg-success">Active</span>{% else %}<span class="badge text-bg-secondary">Not active</span>{% endif %}</td>
           <td class="text-end text-nowrap">
             <a class="btn btn-sm btn-outline-primary" href="{% url 'constraints:edit' project.pk scenario.pk constraint.pk %}">Edit</a>
+            <form method="post" action="{% url 'constraints:copy' project.pk scenario.pk constraint.pk %}" class="d-inline">{% csrf_token %}
+              <button class="btn btn-sm btn-outline-secondary" type="submit">Copy</button>
+            </form>
             <form method="post" action="{% url 'constraints:toggle' project.pk scenario.pk constraint.pk %}" class="d-inline">{% csrf_token %}
               <button class="btn btn-sm btn-outline-secondary" type="submit">{% if constraint.active %}Deactivate{% else %}Activate{% endif %}</button>
             </form>

@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}{{ type_label }} — {{ scenario.name }}{% endblock %}
+{% block title %}{% if constraint %}Edit {{ constraint.name }}{% else %}{{ type_label }}{% endif %} — {{ scenario.name }}{% endblock %}
 {% block content %}
 {% include "partials/project_nav.html" with nav="scenarios" %}
 {% include "partials/scenario_nav.html" with snav="constraints" %}
-<h1 class="h3">{{ type_label }}</h1>
+<h1 class="h3">{% if constraint %}Edit {{ constraint.name }}{% else %}{{ type_label }}{% endif %}</h1>
 <p>{{ type_summary }}</p>
 {% if constraint_type == "maximum_trip_payload" %}
   <div class="alert alert-warning" id="payload-soft-warning">A soft payload limit permits an overloaded result. The excess is penalised. It is not converted back to a hard limit.</div>
@@ -65,7 +65,7 @@
     })();
   </script>
   {% endif %}
-  <button class="btn btn-primary" type="submit">Save constraint</button>
+  <button class="btn btn-primary" type="submit">{% if constraint %}Save changes{% else %}Save constraint{% endif %}</button>
   <a class="btn btn-link" href="{% url 'constraints:list' project.pk scenario.pk %}">Cancel</a>
 </form>
 {% endblock %}

@@ -97,6 +97,47 @@ def constraint_create(request, project_id: int, scenario_id: int, constraint_typ
 def constraint_edit(request, project_id: int, scenario_id: int, constraint_id: int):
     constraint = owned_constraint(request.user, project_id, scenario_id, constraint_id)
     scenario = constraint.scenario
+    if request.method == "POST" and "name" not in request.POST:
+        return _edit_level(request, constraint)
+    foundations, vessel, _constraints, columns = scenario_context(scenario)
+    form = _form(
+        request,
+        scenario,
+        constraint.constraint_type,
+        foundations,
+        vessel,
+        columns,
+        initial={
+            "package": constraint.package or "FOU",
+            "name": constraint.name,
+            "description": constraint.description,
+            "enforcement": constraint.enforcement,
+            "severity": constraint.severity,
+            "active": constraint.active,
+        },
+        initial_parameters=constraint.parameters_json or {},
+    )
+    if request.method == "POST" and form.is_valid():
+        constraint.name = form.cleaned_data["name"]
+        constraint.description = form.cleaned_data["description"]
+        constraint.active = bool(form.cleaned_data["active"])
+        constraint.enforcement = form.cleaned_data["enforcement"]
+        constraint.severity = form.cleaned_data["severity"]
+        constraint.scope = form.cleaned_data.get("scope") or ""
+        constraint.package = form.cleaned_data.get("package") or "FOU"
+        constraint.parameters_json = form.cleaned_data["parameters"]
+        constraint.save()
+        messages.success(request, "Constraint updated.")
+        return redirect("constraints:list", project_id=project_id, scenario_id=scenario_id)
+    return render(
+        request,
+        "constraints/form.html",
+        _form_context(scenario, constraint.constraint_type, form, constraint),
+    )
+
+
+def _edit_level(request, constraint):
+    scenario = constraint.scenario
     package_choices = None
     if constraint.constraint_type == "package_buffer":
         package_choices = [("IAC", "IAC"), ("WTG", "WTG")]
@@ -109,13 +150,13 @@ def constraint_edit(request, project_id: int, scenario_id: int, constraint_id: i
             "severity": constraint.severity,
         },
     )
-    if request.method == "POST" and form.is_valid():
+    if form.is_valid():
         constraint.package = form.cleaned_data["package"]
         constraint.enforcement = form.cleaned_data["enforcement"]
         constraint.severity = form.cleaned_data["severity"]
         constraint.save(update_fields=["package", "enforcement", "severity", "updated_at"])
         messages.success(request, "Constraint type and severity updated.")
-        return redirect("constraints:list", project_id=project_id, scenario_id=scenario_id)
+        return redirect("constraints:list", project_id=scenario.project_id, scenario_id=scenario.pk)
     return render(
         request,
         "constraints/level.html",
@@ -126,6 +167,37 @@ def constraint_edit(request, project_id: int, scenario_id: int, constraint_id: i
             "form": form,
         },
     )
+
+
+@login_required
+@require_POST
+def constraint_copy(request, project_id: int, scenario_id: int, constraint_id: int):
+    source = owned_constraint(request.user, project_id, scenario_id, constraint_id)
+    scenario = source.scenario
+    order = (scenario.constraints.aggregate(maximum=Max("display_order"))["maximum"] or 0) + 1
+    Constraint.objects.create(
+        scenario=scenario,
+        name=_copy_name(source.name),
+        constraint_type=source.constraint_type,
+        description=source.description,
+        active=source.active,
+        enforcement=source.enforcement,
+        severity=source.severity,
+        scope=source.scope,
+        package=source.package,
+        parameters_json=source.parameters_json,
+        display_order=order,
+    )
+    messages.success(request, "Constraint copied.")
+    return redirect("constraints:list", project_id=project_id, scenario_id=scenario_id)
+
+
+def _copy_name(name: str) -> str:
+    suffix = " copy"
+    trimmed = name.strip() or "Constraint"
+    if len(trimmed) + len(suffix) <= 200:
+        return trimmed + suffix
+    return trimmed[: 200 - len(suffix)].rstrip() + suffix
 
 
 @login_required
@@ -149,14 +221,24 @@ def constraint_delete(request, project_id: int, scenario_id: int, constraint_id:
     return redirect("constraints:list", project_id=project_id, scenario_id=scenario_id)
 
 
-def _form(request, scenario, constraint_type, foundations, vessel, columns):
+def _form(
+    request,
+    scenario,
+    constraint_type,
+    foundations,
+    vessel,
+    columns,
+    initial=None,
+    initial_parameters=None,
+):
     included_ids = [item.foundation_id for item in foundations if item.include]
     dataset = scenario.dataset_version
     if dataset is not None:
         included_ids.extend(row.cable_id for row in dataset.cables.all() if row.include)
         included_ids.extend(row.wtg_id for row in dataset.wtg_locations.all() if row.include)
-    initial = None
-    initial_parameters = None
+    for identity in _referenced_ids(initial_parameters or {}):
+        if identity not in included_ids:
+            included_ids.append(identity)
     return ConstraintForm(
         data=request.POST or None,
         constraint_type=constraint_type,
@@ -168,6 +250,16 @@ def _form(request, scenario, constraint_type, foundations, vessel, columns):
         initial=initial,
         initial_parameters=initial_parameters,
     )
+
+
+def _referenced_ids(parameters: dict) -> list[str]:
+    found = []
+    for key in ("foundation_id", "predecessor_foundation_id", "successor_foundation_id"):
+        if parameters.get(key) not in (None, ""):
+            found.append(str(parameters[key]))
+    for item in parameters.get("foundation_ids") or []:
+        found.append(str(item))
+    return found
 
 
 def _form_context(scenario, constraint_type, form, constraint=None):
