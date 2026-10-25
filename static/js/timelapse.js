@@ -5,6 +5,7 @@
   if (!node || !svg) return;
   var payload = JSON.parse(node.textContent);
   var data = payload.activities || [];
+  var labels = payload.labels || [];
   if (!data.length) return;
   var origin = payload.origin;
   var horizon = payload.horizon;
@@ -37,6 +38,10 @@
         xs.push(point.x2);
         ys.push(point.y2);
       }
+    });
+    labels.forEach(function (label) {
+      xs.push(label.x);
+      ys.push(label.y);
     });
     var minX = Math.min.apply(null, xs);
     var maxX = Math.max.apply(null, xs);
@@ -142,6 +147,15 @@
         opacity: 0.95
       }));
     }
+  }
+
+  function drawLabels() {
+    labels.forEach(function (label) {
+      svg.appendChild(el("text", {
+        x: layout.X(label.x), y: layout.Y(label.y),
+        "text-anchor": "middle", class: "label"
+      }, label.id));
+    });
   }
 
   function drawCables() {
@@ -253,6 +267,7 @@
       drawRoutes(grouped[packageName]);
     });
     drawCables();
+    drawLabels();
     locations().forEach(drawLocation);
     document.getElementById("timelapse-status").textContent = statusText();
     document.getElementById("timelapse-slider").value = String(sliderValue());

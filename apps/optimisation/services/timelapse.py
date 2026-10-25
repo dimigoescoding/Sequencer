@@ -94,10 +94,24 @@ def timelapse_payload(run: OptimisationRun) -> dict[str, Any]:
         "notice": "",
         "player": {
             "activities": activities,
+            "labels": _oss_labels(run),
             "origin": min(item["start"] for item in activities),
             "horizon": max(item["end"] for item in activities),
         },
     }
+
+
+def _oss_labels(run: OptimisationRun) -> list[dict[str, Any]]:
+    labels = []
+    for row in run.dataset_version.foundations.all():
+        if str(row.foundation_id).strip().casefold() != "oss":
+            continue
+        if row.easting_m is None or row.northing_m is None:
+            continue
+        labels.append(
+            {"id": row.foundation_id, "x": float(row.easting_m), "y": float(row.northing_m)}
+        )
+    return labels
 
 
 def _add_cables(run, rows, slots, activities: list[dict[str, Any]], missing: list[str]) -> None:
