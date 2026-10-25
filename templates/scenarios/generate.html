@@ -5,7 +5,7 @@
 {% include "partials/project_nav.html" with nav="scenarios" %}
 {% include "partials/scenario_nav.html" with snav="generate" %}
 <h1 class="h3">Generate sequence</h1>
-<p>Dataset {% if scenario.dataset_version %}v{{ scenario.dataset_version.version_number }}{% else %}not selected{% endif %}. Solver time limit {{ scenario.vessel_settings.solver_time_limit_seconds }} seconds. The page waits until the solver finishes.</p>
+<p>Dataset {% if scenario.dataset_version %}v{{ scenario.dataset_version.version_number }}{% else %}not selected{% endif %}. Solver time limit {{ scenario.vessel_settings.solver_time_limit_seconds }} seconds. This page waits until the solver finishes, and only one sequence runs at a time.</p>
 {% if conflicts %}
   <div class="alert alert-danger">
     <strong>Direct conflicts block optimisation.</strong> The solver will not start and no constraint will be relaxed.
@@ -18,8 +18,14 @@
 {% if not constraints %}<p class="text-secondary">No active constraints. The sequence still assigns every included foundation once.</p>{% else %}
   <ul>{% for constraint in constraints %}<li>{{ constraint.name }} — {{ constraint.type_label }} — <span class="badge {{ constraint.enforcement|badge_class }}">{{ constraint.enforcement }}</span>{% if constraint.severity %} severity {{ constraint.severity }}{% endif %}</li>{% endfor %}</ul>
 {% endif %}
-<form method="post">
+<form method="post" id="generate-form">
   {% csrf_token %}
-  <button class="btn btn-primary" type="submit" {% if conflicts %}disabled{% endif %}>Generate sequence</button>
+  <button class="btn btn-primary" id="generate-button" type="submit" {% if conflicts %}disabled{% endif %}>Generate sequence</button>
+  <div id="generate-progress" class="mt-3" hidden>
+    <p class="mb-2" id="generate-status">A sequence is running. This page waits until the solver finishes.</p>
+    <div class="progress" role="progressbar" aria-labelledby="generate-status">
+      <div class="progress-bar progress-bar-striped progress-bar-animated w-100"></div>
+    </div>
+  </div>
 </form>
 {% endblock %}

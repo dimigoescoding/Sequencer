@@ -36,9 +36,141 @@ body {
   white-space: nowrap;
 }
 
+.foundation-scroll {
+  max-height: 32rem;
+  overflow: auto;
+}
+
+.foundation-scroll thead th {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 1;
+  box-shadow: inset 0 -1px 0 var(--sq-line);
+}
+
+.timelapse-stage:fullscreen,
+.timelapse-stage:-webkit-full-screen {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 16px 20px 12px;
+  background: #fbfcfe;
+}
+
+.timelapse-stage:fullscreen .timelapse-map,
+.timelapse-stage:-webkit-full-screen .timelapse-map {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+}
+
+.timelapse-map {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #fbfcfe;
+  border: 1px solid var(--sq-line);
+  border-radius: 8px;
+}
+
+.timelapse-map .grid { stroke: #dce3ea; stroke-width: 1; }
+.timelapse-map .tick { fill: #52606d; font-size: 11px; }
+.timelapse-map .label {
+  font-size: 10px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: white;
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  fill: #172033;
+}
+.timelapse-map .point { stroke: white; stroke-width: 2; }
+.timelapse-map .route { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+
+.timelapse-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 0 4px;
+  flex-wrap: wrap;
+}
+
+.timelapse-controls button,
+.timelapse-controls select {
+  padding: 7px 12px;
+  border: 1px solid #aab6c2;
+  border-radius: 7px;
+  background: white;
+  font-weight: 600;
+}
+
+.timelapse-controls input[type="range"] {
+  flex: 1;
+  min-width: 180px;
+}
+
 .empty-state {
   padding: 2rem 1rem;
   color: #52606d;
+}
+
+.app-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 1030;
+  width: 232px;
+  padding: 1.25rem 0.75rem;
+  background: #10182a;
+  color: #d7dee7;
+}
+
+.app-sidebar-brand {
+  margin: 0.25rem 0.75rem 1.25rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.app-sidebar .nav-link {
+  color: #d7dee7;
+  border-radius: 8px;
+  padding: 0.55rem 0.85rem;
+}
+
+.app-sidebar .nav-link:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.app-sidebar .nav-link.active {
+  background: #2f6fed;
+  color: #fff;
+}
+
+body:has(.app-sidebar) .navbar,
+body:has(.app-sidebar) main,
+body:has(.app-sidebar) .site-footer {
+  margin-left: 232px;
+}
+
+@media (max-width: 768px) {
+  .app-sidebar {
+    position: static;
+    width: auto;
+    margin-bottom: 1rem;
+  }
+
+  body:has(.app-sidebar) .navbar,
+  body:has(.app-sidebar) main,
+  body:has(.app-sidebar) .site-footer {
+    margin-left: 0;
+  }
 }
 
 .subnav .nav-link {

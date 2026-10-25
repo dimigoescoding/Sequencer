@@ -37,8 +37,11 @@ CONSTRAINT_TYPES: dict[str, dict[str, str]] = {
         "summary": "Foundations that match the attribute rule must not use the selected positions.",
     },
     "earliest_sequence": {
-        "label": "Earliest sequence position",
-        "summary": "A foundation, or foundations matching a rule, cannot be installed before this point.",
+        "label": "Earliest trip",
+        "summary": (
+            "One location, or every location matching an attribute, is not installed before "
+            "this trip. Trip 2 keeps those locations out of the first trip."
+        ),
     },
     "latest_sequence": {
         "label": "Latest sequence position",
@@ -86,11 +89,23 @@ CONSTRAINT_TYPES: dict[str, dict[str, str]] = {
         ),
     },
     "minimise_within_trip_distance": {
-        "label": "Minimise within-trip distance",
+        "label": "Minimise total sailing distance",
         "summary": (
-            "Minimise total Euclidean distance within each trip. Harbour legs are included "
-            "only when you enable them and supply harbour coordinates. No map is drawn."
+            "Minimise the straight-line distance from each foundation to the next across "
+            "the full sequence. That includes the sail inside a trip and the sail from the "
+            "end of one trip to the start of the next. Harbour transit is not included. "
+            "The solver chooses trip membership and the route together. No map is drawn."
         ),
+    },
+    "matching_installed_first": {
+        "label": "Matching locations first",
+        "summary": (
+            "Locations that match the attribute occupy the first positions, in any order among themselves."
+        ),
+    },
+    "avoid_matching_in_first_trips": {
+        "label": "Avoid matches in the first trips",
+        "summary": "Matching locations are kept out of the first trips named by the rule.",
     },
 }
 

@@ -24,9 +24,32 @@ BADGES = {
 }
 
 
+@register.filter(name="attr")
+def attribute(attributes, key: str) -> str:
+    if not isinstance(attributes, dict):
+        return "—"
+    value = attributes.get(key)
+    if value is None or value == "":
+        return "—"
+    if value is True:
+        return "Yes"
+    if value is False:
+        return "No"
+    return str(value)
+
+
 @register.filter
 def badge_class(value) -> str:
     return BADGES.get(str(value), "text-bg-secondary")
+
+
+@register.filter
+def nautical_miles(metres) -> str:
+    from apps.optimisation.services.routing import format_nautical_miles
+
+    if metres is None or metres == "":
+        return "—"
+    return format_nautical_miles(metres)
 
 
 @register.simple_tag(takes_context=True)

@@ -1,31 +1,116 @@
-"""Parse and validate a Foundation_Input workbook.
+"""Parse the FOU, IAC, WTG, and Programme workbook.
 
-Spreadsheet cells are untrusted data. Formulas are rejected and never evaluated.
+Spreadsheet cells are untrusted data. Formula text is never calculated. When
+Excel has already stored a calculated value, that stored value is read.
+Other sheets are ignored. Constraints and settings are not read from the file.
 """
 
 from __future__ import annotations
 
+import re
 import zipfile
 from dataclasses import dataclass, field
+from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from typing import Any
 
-import pandas as pd
+from django.utils import timezone
 from openpyxl import load_workbook
 from openpyxl.cell.cell import Cell
+from openpyxl.worksheet.worksheet import Worksheet
 
-from apps.datasets.columns import (
-    ALL_COLUMNS,
-    DECIMAL_COLUMNS,
-    MANDATORY_COLUMNS,
-    POSITIVE_DECIMAL_COLUMNS,
-    POSITIVE_INT_COLUMNS,
-)
 from apps.optimisation.services.types import FoundationInput
 
 TRUE_TEXT = {"yes", "true", "1", "y"}
 FALSE_TEXT = {"no", "false", "0", "n"}
+
+FOU_FIELDS = {
+    "wtg id": "wtg_id",
+    "include": "include",
+    "structure": "structure",
+    "easting": "easting",
+    "northing": "northing",
+    "aver weight": "weight",
+    "length": "length",
+    "delivery batch": "delivery_batch",
+    "spider location": "spider_location",
+    "shallow location": "shallow_location",
+    "soil difficulty": "soil_difficulty",
+    "jacking difficulty": "jacking_difficulty",
+    "punch through": "punch_through",
+    "eccentricity limit": "eccentricity_limit",
+}
+IAC_FIELDS = {
+    "cable id": "cable_id",
+    "nickname": "nickname",
+    "include": "include",
+    "string id": "string_id",
+    "loop id": "loop_id",
+    "location id (cable start-point)": "start_location",
+    "location id (cable end-point)": "end_location",
+    "spider cable": "spider_cable",
+}
+WTG_FIELDS = {
+    "wtg id": "wtg_id",
+    "include": "include",
+    "structure": "structure",
+    "easting": "easting",
+    "northing": "northing",
+    "spider location": "spider_location",
+    "string": "string",
+    "jacking difficulty": "jacking_difficulty",
+    "jacking difficulty wtg": "jacking_difficulty",
+}
+FOU_REQUIRED = ("wtg_id", "include", "weight", "easting", "northing")
+IAC_REQUIRED = ("cable_id", "include", "start_location", "end_location")
+WTG_REQUIRED = ("wtg_id", "include", "easting", "northing")
+FIELD_LABELS = {
+    "wtg_id": "WTG ID",
+    "include": "Include",
+    "weight": "Aver. Weight[t]",
+    "easting": "Easting",
+    "northing": "Northing",
+    "cable_id": "Cable ID",
+    "start_location": "Location ID (Cable start-point)",
+    "end_location": "Location ID (Cable end-point)",
+}
+SOLVER_COLUMNS = {
+    "wtg_id": "Foundation_ID",
+    "include": "Include",
+    "weight": "Weight_t",
+    "easting": "Easting_m",
+    "northing": "Northing_m",
+    "length": "Length_m",
+    "delivery_batch": "Delivery_Batch",
+    "spider_location": "Spider location",
+    "shallow_location": "Shallow location",
+    "jacking_difficulty": "Jacking difficulty",
+    "structure": "Structure",
+    "soil_difficulty": "Soil difficulty",
+    "punch_through": "Punch_Through",
+    "eccentricity_limit": "Eccentricity_Limit_m",
+}
+IAC_COLUMNS = {
+    "cable_id": "Cable ID",
+    "nickname": "Nickname",
+    "string_id": "String ID",
+    "loop_id": "Loop ID",
+    "start_location": "Start location",
+    "end_location": "End location",
+    "spider_cable": "Spider cable",
+}
+WTG_COLUMNS = {
+    "wtg_id": "Foundation_ID",
+    "include": "Include",
+    "structure": "Structure",
+    "easting": "Easting_m",
+    "northing": "Northing_m",
+    "spider_location": "Spider location",
+    "string": "String",
+    "jacking_difficulty": "Jacking difficulty WTG",
+}
+REQUIRED_SHEETS = ("FOU data", "IAC data", "WTG data", "Programme")
 
 
 class UploadRejected(Exception):
@@ -42,8 +127,49 @@ class Issue:
 
 
 @dataclass
+class CableRow:
+    cable_id: str
+    include: bool | None
+    nickname: str
+    string_id: str
+    loop_id: str
+    start_location_id: str
+    end_location_id: str
+    spider_cable: bool | None
+    source_row: int
+
+
+@dataclass
+class WtgRow:
+    wtg_id: str
+    include: bool | None
+    structure: str
+    easting_m: Decimal | None
+    northing_m: Decimal | None
+    spider_location: bool | None
+    string_label: str
+    jacking_difficulty: str
+    source_row: int
+
+
+@dataclass
+class ProgrammeRow:
+    slot: int
+    source_row: int
+    fou_p50_start: datetime | None = None
+    fou_p50_end: datetime | None = None
+    iac_p50_start: datetime | None = None
+    iac_p50_end: datetime | None = None
+    wtg_p50_start: datetime | None = None
+    wtg_p50_end: datetime | None = None
+
+
+@dataclass
 class ParseResult:
     foundations: list[FoundationInput] = field(default_factory=list)
+    cables: list[CableRow] = field(default_factory=list)
+    wtg_rows: list[WtgRow] = field(default_factory=list)
+    programme: list[ProgrammeRow] = field(default_factory=list)
     issues: list[Issue] = field(default_factory=list)
     columns: list[str] = field(default_factory=list)
     source_rows: list[int] = field(default_factory=list)
@@ -57,22 +183,91 @@ class ParseResult:
         return sum(1 for issue in self.issues if issue.severity == "warning")
 
 
-def _blank(value: Any) -> bool:
-    if value is None or value is pd.NA:
-        return True
-    if isinstance(value, float) and pd.isna(value):
-        return True
-    return isinstance(value, str) and value.strip() == ""
+def parse_workbook(content: bytes) -> ParseResult:
+    if _contains_macros(content):
+        raise UploadRejected("Macro-enabled workbooks are not accepted and their code is not run.")
+    try:
+        formulas = load_workbook(BytesIO(content), data_only=False, keep_vba=False)
+        cached = load_workbook(BytesIO(content), data_only=True, keep_vba=False)
+    except Exception as exc:
+        raise UploadRejected("The file is not a readable .xlsx workbook.") from exc
 
+    sheets = {label: _find_sheet(formulas, label) for label in REQUIRED_SHEETS}
+    missing = [label for label, sheet in sheets.items() if sheet is None]
+    if missing:
+        return ParseResult(
+            issues=[
+                Issue(
+                    "error",
+                    "missing_sheet",
+                    "The workbook must contain FOU data, IAC data, WTG data, and Programme sheets. "
+                    "Missing: " + ", ".join(missing) + ".",
+                )
+            ]
+        )
 
-def _issue(
-    severity: str, code: str, message: str, row: int | None = None, column: str = ""
-) -> Issue:
-    return Issue(severity=severity, code=code, message=message, row_number=row, column_name=column)
+    issues: list[Issue] = []
+    foundations, source_rows, fou_columns, fou_issues = _parse_table(
+        sheets["FOU data"],
+        _find_sheet(cached, "FOU data"),
+        FOU_FIELDS,
+        FOU_REQUIRED,
+        _foundation_from_values,
+        SOLVER_COLUMNS,
+    )
+    issues.extend(fou_issues)
+    cables, _cable_rows, iac_columns, iac_issues = _parse_table(
+        sheets["IAC data"],
+        _find_sheet(cached, "IAC data"),
+        IAC_FIELDS,
+        IAC_REQUIRED,
+        _cable_from_values,
+        IAC_COLUMNS,
+    )
+    issues.extend(iac_issues)
+    wtg_rows, _wtg_source, wtg_columns, wtg_issues = _parse_table(
+        sheets["WTG data"],
+        _find_sheet(cached, "WTG data"),
+        WTG_FIELDS,
+        WTG_REQUIRED,
+        _wtg_from_values,
+        WTG_COLUMNS,
+    )
+    issues.extend(wtg_issues)
+    programme, programme_issues = _parse_programme(
+        sheets["Programme"], _find_sheet(cached, "Programme")
+    )
+    issues.extend(programme_issues)
+    issues.extend(_unknown_endpoints(cables, foundations, wtg_rows))
+    if (
+        not foundations
+        and not cables
+        and not wtg_rows
+        and not any(issue.code == "missing_columns" for issue in issues)
+    ):
+        issues.append(
+            Issue(
+                "error",
+                "no_rows",
+                "The workbook does not contain any FOU, IAC, or WTG rows.",
+            )
+        )
+    columns: list[str] = []
+    for name in [*fou_columns, *iac_columns, *wtg_columns]:
+        if name not in columns:
+            columns.append(name)
+    return ParseResult(
+        foundations=foundations,
+        cables=cables,
+        wtg_rows=wtg_rows,
+        programme=programme,
+        issues=issues,
+        columns=columns,
+        source_rows=source_rows,
+    )
 
 
 def _contains_macros(content: bytes) -> bool:
-    """Reject workbooks that contain a VBA project. Cell values are never executed."""
     try:
         with zipfile.ZipFile(BytesIO(content)) as archive:
             names = [name.lower() for name in archive.namelist()]
@@ -81,380 +276,526 @@ def _contains_macros(content: bytes) -> bool:
     return any(name.endswith("vbaproject.bin") for name in names)
 
 
-def parse_workbook(content: bytes) -> ParseResult:
-    if _contains_macros(content):
-        raise UploadRejected("Macro-enabled workbooks are not accepted and their code is not run.")
-    try:
-        workbook = load_workbook(BytesIO(content), data_only=False, keep_vba=False)
-    except Exception as exc:
-        raise UploadRejected("The file is not a readable .xlsx workbook.") from exc
-    if "Foundation_Input" not in workbook.sheetnames:
-        return ParseResult(
-            issues=[
-                _issue(
-                    "error",
-                    "missing_sheet",
-                    "The workbook must contain a sheet named Foundation_Input.",
-                )
-            ]
-        )
-    worksheet = workbook["Foundation_Input"]
-    header_cells = [cell for cell in next(worksheet.iter_rows(min_row=1, max_row=1))]
-    headers = [_header_name(cell) for cell in header_cells]
-    recognised = [name for name in headers if name in ALL_COLUMNS]
-    missing = [name for name in MANDATORY_COLUMNS if name not in recognised]
+def _find_sheet(workbook, expected: str) -> Worksheet | None:
+    if workbook is None:
+        return None
+    target = expected.strip().casefold()
+    for name in workbook.sheetnames:
+        if name.strip().casefold() == target:
+            return workbook[name]
+    return None
+
+
+def _header_key(value: Any, mapping: dict[str, str]) -> str:
+    text = str(value or "").replace("\n", " ").strip().casefold()
+    text = re.sub(r"\[[^\]]*\]", "", text)
+    text = text.replace("aver.", "aver")
+    text = re.sub(r"\s+", " ", text).strip(" .")
+    return mapping.get(text, "")
+
+
+def _blank(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and value.strip() == "")
+
+
+def _parse_table(worksheet, cached, mapping, required, build_row, column_names):
     issues: list[Issue] = []
-    unknown = [name for name in headers if name and name not in ALL_COLUMNS]
-    if unknown:
-        issues.append(
-            _issue(
-                "warning",
-                "unknown_columns",
-                "Unrecognised columns were ignored: " + ", ".join(unknown) + ".",
-            )
-        )
+    header_row = next(worksheet.iter_rows(min_row=1, max_row=1))
+    fields = [_header_key(cell.value, mapping) for cell in header_row]
+    present = {name for name in fields if name}
+    missing = [FIELD_LABELS[name] for name in required if name not in present]
+    columns = [column_names[name] for name in present if name in column_names]
     if missing:
         issues.append(
-            _issue(
+            Issue(
                 "error",
                 "missing_columns",
-                "Mandatory columns are missing: " + ", ".join(missing) + ".",
+                f"{worksheet.title} is missing columns: " + ", ".join(missing) + ".",
             )
         )
-        return ParseResult(issues=issues, columns=recognised)
+        return [], [], columns, issues
 
-    raw_rows: list[dict[str, Any]] = []
+    rows = []
     source_rows: list[int] = []
+    seen: set[str] = set()
+    used_cached_formula = False
     for excel_row in worksheet.iter_rows(min_row=2):
         values: dict[str, Any] = {}
-        formula = False
         empty = True
+        row_number = excel_row[0].row
+        formula_error = False
         for cell in excel_row:
-            header = _header_name_from_index(headers, cell.column)
-            if header not in ALL_COLUMNS:
+            if cell.column - 1 >= len(fields):
                 continue
-            if cell.data_type == "f":
-                formula = True
+            field_name = fields[cell.column - 1]
+            if not field_name:
+                continue
+            cached_cell = cached.cell(cell.row, cell.column) if cached is not None else None
+            value, kind = _read_cell(cell, cached_cell)
+            if kind == "formula_missing":
+                formula_error = True
                 issues.append(
-                    _issue(
+                    Issue(
                         "error",
                         "formula",
-                        f"Row {cell.row} column {header} contains a formula. "
-                        "Formulas are not executed. Enter a calculated value.",
-                        row=cell.row,
-                        column=header,
+                        f"Row {cell.row} column {FIELD_LABELS.get(field_name, field_name)} contains a formula. "
+                        "Sequencer does not calculate formulas. Save the workbook from Excel so the value is stored.",
+                        row_number=cell.row,
+                        column_name=FIELD_LABELS.get(field_name, field_name),
                     )
                 )
-                values[header] = None
-                empty = False
                 continue
-            if not _blank(cell.value):
+            if kind == "cached":
+                used_cached_formula = True
+            if not _blank(value):
                 empty = False
-            values[header] = cell.value
-        if empty or (formula and not any(not _blank(value) for value in values.values())):
+            values[field_name] = value
+        if empty:
             continue
-        raw_rows.append(values)
-        source_rows.append(excel_row[0].row if excel_row else 0)
-
-    frame = (
-        pd.DataFrame(raw_rows, columns=list(ALL_COLUMNS))
-        if raw_rows
-        else pd.DataFrame(columns=list(ALL_COLUMNS))
-    )
-    if not frame.empty:
-        frame = frame.where(pd.notna(frame), None)
-    foundations, row_issues, kept_rows = _validate_frame(frame, source_rows, set(recognised))
-    issues.extend(row_issues)
-    if not foundations and not any(issue.code == "missing_columns" for issue in issues):
-        issues.append(
-            _issue(
-                "error",
-                "no_rows",
-                "Foundation_Input does not contain any data rows.",
-            )
-        )
-    return ParseResult(
-        foundations=foundations,
-        issues=issues,
-        columns=recognised,
-        source_rows=kept_rows,
-    )
-
-
-def _header_name(cell: Cell) -> str:
-    if cell.value is None:
-        return ""
-    return str(cell.value).strip()
-
-
-def _header_name_from_index(headers: list[str], column_index: int) -> str:
-    position = column_index - 1
-    if position < 0 or position >= len(headers):
-        return ""
-    return headers[position]
-
-
-def _validate_frame(
-    frame: pd.DataFrame,
-    source_rows: list[int],
-    columns_present: set[str],
-) -> tuple[list[FoundationInput], list[Issue], list[int]]:
-    issues: list[Issue] = []
-    if frame.empty:
-        return [], issues, []
-
-    identifier_series = frame["Foundation_ID"].map(_text)
-    duplicate_mask = identifier_series.duplicated(keep=False) & identifier_series.ne("")
-    duplicate_ids = set(identifier_series[duplicate_mask].tolist())
-
-    foundations: list[FoundationInput] = []
-    kept_rows: list[int] = []
-    for position, record in enumerate(frame.to_dict(orient="records")):
-        excel_row = source_rows[position]
-        foundation, row_issues, _included = _parse_record(
-            record, excel_row, duplicate_ids, columns_present
-        )
+        identity = _text(values.get("wtg_id") or values.get("cable_id"))
+        if identity.casefold().startswith("note"):
+            continue
+        if formula_error and identity == "":
+            continue
+        item, row_issues = build_row(values, row_number, seen)
         issues.extend(row_issues)
-        if foundation is not None:
-            foundations.append(foundation)
-            kept_rows.append(excel_row)
-
-    _summary_warnings(foundations, columns_present, issues)
-    return foundations, issues, kept_rows
-
-
-def _summary_warnings(
-    foundations: list[FoundationInput],
-    columns_present: set[str],
-    issues: list[Issue],
-) -> None:
-    included = [item for item in foundations if item.include]
-    if not included:
+        if item is None:
+            continue
+        rows.append(item)
+        source_rows.append(row_number)
+        seen.add(_identity(item).casefold())
+    if used_cached_formula:
         issues.append(
-            _issue(
+            Issue(
                 "warning",
-                "none_included",
-                "No foundations are marked Include=Yes. Optimisation stays blocked until one is included.",
+                "cached_formula",
+                "Some cells contain formulas. Sequencer used the values already stored in the workbook and did not calculate them.",
             )
         )
-        return
-
-    def missing(predicate) -> int:
-        return sum(1 for item in included if predicate(item))
-
-    if (
-        "Easting_m" not in columns_present
-        or "Northing_m" not in columns_present
-        or missing(lambda item: item.easting_m is None or item.northing_m is None)
-    ):
-        issues.append(
-            _issue(
-                "warning",
-                "missing_coordinates",
-                "Coordinates are missing for one or more included foundations. "
-                "Distance constraints stay unavailable. This warning does not block optimisation.",
-            )
-        )
-    if "Difficulty_Value" not in columns_present or missing(
-        lambda item: item.difficulty_value is None
-    ):
-        issues.append(
-            _issue(
-                "warning",
-                "missing_difficulty",
-                "Difficulty values are missing for one or more included foundations. "
-                "Difficulty progression stays unavailable.",
-            )
-        )
-    if "Delivery_Batch" not in columns_present or missing(lambda item: item.delivery_batch == ""):
-        issues.append(
-            _issue(
-                "warning",
-                "missing_delivery_batch",
-                "Delivery batch is blank for one or more included foundations.",
-            )
-        )
-    if "Notes" not in columns_present or missing(lambda item: item.notes == ""):
-        issues.append(
-            _issue(
-                "warning",
-                "missing_notes",
-                "Notes are blank for one or more included foundations.",
-            )
-        )
-    if "Delivery_Sequence" in columns_present and missing(
-        lambda item: item.delivery_sequence is None
-    ):
-        issues.append(
-            _issue(
-                "warning",
-                "missing_delivery_sequence",
-                "Delivery sequence is blank for one or more included foundations. "
-                "Delivery-order constraints stay unavailable while any included value is blank.",
-            )
-        )
-    if "Punch_Through" not in columns_present or missing(lambda item: item.punch_through is None):
-        if "Punch_Through" not in columns_present or any(
-            item.punch_through is None for item in included
-        ):
-            issues.append(
-                _issue(
-                    "warning",
-                    "missing_punch_through",
-                    "Punch_Through is missing for one or more included foundations. "
-                    "Rules that depend on Punch_Through cannot be checked for those rows.",
-                )
-            )
+    return rows, source_rows, columns, issues
 
 
-def _parse_record(
-    record: dict[str, Any],
-    excel_row: int,
-    duplicate_ids: set[str],
-    columns_present: set[str],
-) -> tuple[FoundationInput | None, list[Issue], bool]:
+def _identity(item: Any) -> str:
+    if isinstance(item, FoundationInput):
+        return item.foundation_id
+    if isinstance(item, CableRow):
+        return item.cable_id
+    return item.wtg_id
+
+
+def _read_cell(cell: Cell, cached: Cell | None) -> tuple[Any, str]:
+    if cell.data_type == "f":
+        if cached is None or cached.value is None:
+            return None, "formula_missing"
+        return cached.value, "cached"
+    return cell.value, "value"
+
+
+def _foundation_from_values(
+    values: dict[str, Any], row_number: int, seen: set[str]
+) -> tuple[FoundationInput | None, list[Issue]]:
     issues: list[Issue] = []
-    foundation_id = _text(record.get("Foundation_ID"))
+    foundation_id = _text(values.get("wtg_id"))
     if foundation_id == "":
         issues.append(
-            _issue(
+            Issue(
                 "error",
                 "missing_foundation_id",
-                f"Row {excel_row} is missing Foundation_ID.",
-                row=excel_row,
-                column="Foundation_ID",
+                f"Row {row_number} is missing WTG ID.",
+                row_number=row_number,
+                column_name="WTG ID",
             )
         )
-        return None, issues, False
-    if foundation_id in duplicate_ids:
+        return None, issues
+    if foundation_id.casefold() in seen:
         issues.append(
-            _issue(
+            Issue(
                 "error",
                 "duplicate_foundation_id",
-                f"Foundation_ID {foundation_id} is duplicated.",
-                row=excel_row,
-                column="Foundation_ID",
+                f"WTG ID {foundation_id} is duplicated.",
+                row_number=row_number,
+                column_name="WTG ID",
             )
         )
-
-    include, include_error = _parse_bool(record.get("Include"), required=True)
+    include, include_error = _boolean(values.get("include"), required=True)
     if include_error:
         issues.append(
-            _issue(
+            Issue(
                 "error",
                 "invalid_boolean",
-                f"Row {excel_row} Include must be Yes/No, True/False, or 1/0.",
-                row=excel_row,
-                column="Include",
+                f"Row {row_number} Include must be Yes or No.",
+                row_number=row_number,
+                column_name="Include",
             )
         )
-    punch_through = None
-    if "Punch_Through" in columns_present and not _blank(record.get("Punch_Through")):
-        punch_through, punch_error = _parse_bool(record.get("Punch_Through"), required=False)
-        if punch_error:
-            issues.append(
-                _issue(
-                    "error",
-                    "invalid_boolean",
-                    f"Row {excel_row} Punch_Through must be Yes/No, True/False, or 1/0.",
-                    row=excel_row,
-                    column="Punch_Through",
-                )
-            )
-
-    weight, weight_error = _parse_decimal(record.get("Weight_t"), positive=True, required=True)
+    weight, weight_error = _decimal(values.get("weight"), positive=True, required=include is True)
     if weight_error:
         issues.append(
-            _issue(
+            Issue(
                 "error",
                 "invalid_weight",
-                f"Row {excel_row} Weight_t must be a positive number.",
-                row=excel_row,
-                column="Weight_t",
+                f"Row {row_number} Aver. Weight[t] must be a positive number when Include is Yes.",
+                row_number=row_number,
+                column_name="Aver. Weight[t]",
             )
         )
-
-    integers: dict[str, int | None] = {}
-    for column in POSITIVE_INT_COLUMNS:
-        if column not in columns_present:
-            integers[column] = None
-            continue
-        number, error = _parse_positive_int(record.get(column))
-        integers[column] = number
-        if error:
-            issues.append(
-                _issue(
-                    "error",
-                    "invalid_sequence",
-                    f"Row {excel_row} {column} must be a positive integer when provided.",
-                    row=excel_row,
-                    column=column,
-                )
-            )
-    earliest = integers.get("Earliest_Sequence")
-    latest = integers.get("Latest_Sequence")
-    if earliest is not None and latest is not None and earliest > latest:
+    easting, east_error = _decimal(values.get("easting"), positive=False, required=True)
+    northing, north_error = _decimal(values.get("northing"), positive=False, required=True)
+    if east_error or north_error:
         issues.append(
-            _issue(
+            Issue(
                 "error",
-                "earliest_after_latest",
-                f"Row {excel_row} Earliest_Sequence cannot be greater than Latest_Sequence.",
-                row=excel_row,
-                column="Earliest_Sequence",
+                "invalid_coordinate",
+                f"Row {row_number} Easting and Northing must be numbers.",
+                row_number=row_number,
+                column_name="Easting",
             )
         )
-
-    decimals: dict[str, Decimal | None] = {}
-    for column in DECIMAL_COLUMNS:
-        if column == "Weight_t" or column not in columns_present:
-            continue
-        number, error = _parse_decimal(
-            record.get(column), positive=column in POSITIVE_DECIMAL_COLUMNS
+    length, length_error = _decimal(values.get("length"), positive=False, required=False)
+    if length_error:
+        issues.append(
+            Issue(
+                "error",
+                "invalid_number",
+                f"Row {row_number} Length[m] must be a number when provided.",
+                row_number=row_number,
+                column_name="Length[m]",
+            )
         )
-        decimals[column] = number
-        if error:
+    eccentricity, eccentricity_error = _decimal(
+        values.get("eccentricity_limit"), positive=False, required=False
+    )
+    if eccentricity_error:
+        issues.append(
+            Issue(
+                "error",
+                "invalid_number",
+                f"Row {row_number} Eccentricity Limit must be a number when provided.",
+                row_number=row_number,
+                column_name="Eccentricity Limit",
+            )
+        )
+    spider, spider_error = _optional_boolean(
+        values, "spider_location", row_number, "Spider location"
+    )
+    shallow, shallow_error = _optional_boolean(
+        values, "shallow_location", row_number, "Shallow location"
+    )
+    punch, punch_error = _optional_boolean(values, "punch_through", row_number, "Punch through")
+    issues.extend(spider_error + shallow_error + punch_error)
+    attributes: dict[str, Any] = {
+        "Structure": _text(values.get("structure")),
+        "Spider location": spider,
+        "Shallow location": shallow,
+        "Jacking difficulty": _text(values.get("jacking_difficulty")),
+        "Soil difficulty": _text(values.get("soil_difficulty")),
+    }
+    return (
+        FoundationInput(
+            foundation_id=foundation_id,
+            include=include is True,
+            weight_t=weight,
+            length_m=length,
+            delivery_batch=_text(values.get("delivery_batch")),
+            easting_m=easting,
+            northing_m=northing,
+            punch_through=punch,
+            eccentricity_limit_m=eccentricity,
+            attributes=attributes,
+        ),
+        issues,
+    )
+
+
+def _cable_from_values(
+    values: dict[str, Any], row_number: int, seen: set[str]
+) -> tuple[CableRow | None, list[Issue]]:
+    issues: list[Issue] = []
+    cable_id = _text(values.get("cable_id"))
+    if cable_id == "":
+        issues.append(
+            Issue(
+                "error",
+                "missing_cable_id",
+                f"Row {row_number} is missing Cable ID.",
+                row_number=row_number,
+                column_name="Cable ID",
+            )
+        )
+        return None, issues
+    if cable_id.casefold() in seen:
+        issues.append(
+            Issue(
+                "error",
+                "duplicate_cable_id",
+                f"Cable ID {cable_id} is duplicated.",
+                row_number=row_number,
+                column_name="Cable ID",
+            )
+        )
+    include, include_error = _boolean(values.get("include"), required=True)
+    if include_error:
+        issues.append(
+            Issue(
+                "error",
+                "invalid_boolean",
+                f"Row {row_number} Include must be Yes or No.",
+                row_number=row_number,
+                column_name="Include",
+            )
+        )
+    spider, spider_issues = _optional_boolean(values, "spider_cable", row_number, "Spider Cable")
+    issues.extend(spider_issues)
+    return (
+        CableRow(
+            cable_id=cable_id,
+            include=True if include is True else False if include is False else None,
+            nickname=_text(values.get("nickname")),
+            string_id=_text(values.get("string_id")),
+            loop_id=_text(values.get("loop_id")),
+            start_location_id=_text(values.get("start_location")),
+            end_location_id=_text(values.get("end_location")),
+            spider_cable=spider,
+            source_row=row_number,
+        ),
+        issues,
+    )
+
+
+def _wtg_from_values(
+    values: dict[str, Any], row_number: int, seen: set[str]
+) -> tuple[WtgRow | None, list[Issue]]:
+    issues: list[Issue] = []
+    wtg_id = _text(values.get("wtg_id"))
+    if wtg_id == "":
+        issues.append(
+            Issue(
+                "error",
+                "missing_foundation_id",
+                f"Row {row_number} is missing WTG ID.",
+                row_number=row_number,
+                column_name="WTG ID",
+            )
+        )
+        return None, issues
+    if wtg_id.casefold() in seen:
+        issues.append(
+            Issue(
+                "error",
+                "duplicate_foundation_id",
+                f"WTG ID {wtg_id} is duplicated on WTG data.",
+                row_number=row_number,
+                column_name="WTG ID",
+            )
+        )
+    include, include_error = _boolean(values.get("include"), required=True)
+    if include_error:
+        issues.append(
+            Issue(
+                "error",
+                "invalid_boolean",
+                f"Row {row_number} Include must be Yes or No.",
+                row_number=row_number,
+                column_name="Include",
+            )
+        )
+    easting, east_error = _decimal(values.get("easting"), positive=False, required=include is True)
+    northing, north_error = _decimal(
+        values.get("northing"), positive=False, required=include is True
+    )
+    if east_error or north_error:
+        issues.append(
+            Issue(
+                "error",
+                "invalid_coordinate",
+                f"Row {row_number} Easting and Northing must be numbers when Include is Yes.",
+                row_number=row_number,
+                column_name="Easting",
+            )
+        )
+    spider, spider_issues = _optional_boolean(
+        values, "spider_location", row_number, "Spider location"
+    )
+    issues.extend(spider_issues)
+    return (
+        WtgRow(
+            wtg_id=wtg_id,
+            include=True if include is True else False if include is False else None,
+            structure=_text(values.get("structure")),
+            easting_m=easting,
+            northing_m=northing,
+            spider_location=spider,
+            string_label=_text(values.get("string")),
+            jacking_difficulty=_text(values.get("jacking_difficulty")),
+            source_row=row_number,
+        ),
+        issues,
+    )
+
+
+def _parse_programme(
+    worksheet: Worksheet, cached: Worksheet | None
+) -> tuple[list[ProgrammeRow], list[Issue]]:
+    issues: list[Issue] = []
+    rows = list(worksheet.iter_rows(min_row=1, max_row=2))
+    if len(rows) < 2:
+        return [], [
+            Issue(
+                "error",
+                "missing_columns",
+                "Programme needs a package row and a P50 header row.",
+            )
+        ]
+    packages: list[str] = []
+    current = ""
+    for cell in rows[0]:
+        text = _text(cell.value).casefold()
+        if text:
+            current = text
+        packages.append(current)
+    headers = [_plain_header(cell.value) for cell in rows[1]]
+    location_index = next((index for index, name in enumerate(headers) if name == "location"), None)
+    dates: dict[tuple[str, str], int] = {}
+    for index, name in enumerate(headers):
+        package = packages[index] if index < len(packages) else ""
+        if package in {"fou", "iac", "wtg"} and name in {"p50 start", "p50 end"}:
+            kind = "start" if name.endswith("start") else "end"
+            dates[(package, kind)] = index
+    expected = {
+        ("fou", "start"),
+        ("fou", "end"),
+        ("iac", "start"),
+        ("iac", "end"),
+        ("wtg", "start"),
+        ("wtg", "end"),
+    }
+    if location_index is None or expected - set(dates):
+        return [], [
+            Issue(
+                "error",
+                "missing_columns",
+                "Programme must list Location and P50 start and end for FOU, IAC, and WTG.",
+            )
+        ]
+    parsed: list[ProgrammeRow] = []
+    seen: set[int] = set()
+    cached_sheet = cached
+    for excel_row in worksheet.iter_rows(min_row=3):
+        if all(_blank(cell.value) for cell in excel_row):
+            continue
+        row_number = excel_row[0].row
+        slot_value, _kind = _cached_value(excel_row, location_index, cached_sheet)
+        slot, slot_error = _optional_int(slot_value)
+        if slot_error or slot is None:
             issues.append(
-                _issue(
+                Issue(
                     "error",
-                    "invalid_number",
-                    f"Row {excel_row} {column} must be numeric when supplied.",
-                    row=excel_row,
-                    column=column,
+                    "invalid_slot",
+                    f"Programme row {row_number} Location must be a positive integer.",
+                    row_number=row_number,
+                    column_name="Location",
                 )
             )
+            continue
+        if slot in seen:
+            issues.append(
+                Issue(
+                    "error",
+                    "duplicate_slot",
+                    f"Programme location {slot} is duplicated.",
+                    row_number=row_number,
+                    column_name="Location",
+                )
+            )
+        seen.add(slot)
+        values: dict[str, datetime | None] = {}
+        failed = False
+        for package, kind in expected:
+            raw, kind_name = _cached_value(excel_row, dates[(package, kind)], cached_sheet)
+            if kind_name == "formula_missing":
+                failed = True
+                issues.append(
+                    Issue(
+                        "error",
+                        "formula",
+                        f"Programme row {row_number} contains a formula. Sequencer does not calculate formulas.",
+                        row_number=row_number,
+                        column_name="P50",
+                    )
+                )
+                continue
+            parsed_date, date_error = _datetime(raw)
+            if date_error:
+                failed = True
+                issues.append(
+                    Issue(
+                        "error",
+                        "invalid_date",
+                        f"Programme row {row_number} {package.upper()} P50 {kind} must be a date.",
+                        row_number=row_number,
+                        column_name="P50",
+                    )
+                )
+            values[f"{package}_p50_{kind}"] = parsed_date
+        if failed:
+            continue
+        parsed.append(ProgrammeRow(slot=slot, source_row=row_number, **values))
+    return parsed, issues
 
-    notes = ""
-    if "Notes" in columns_present and not _blank(record.get("Notes")):
-        notes = str(record.get("Notes")).strip()[:2000]
-    batch = ""
-    if "Delivery_Batch" in columns_present and not _blank(record.get("Delivery_Batch")):
-        batch_value = record.get("Delivery_Batch")
-        if isinstance(batch_value, float) and batch_value.is_integer():
-            batch = str(int(batch_value))
-        elif isinstance(batch_value, int) and not isinstance(batch_value, bool):
-            batch = str(batch_value)
-        else:
-            batch = str(batch_value).strip()
 
-    foundation = FoundationInput(
-        foundation_id=foundation_id,
-        include=bool(include),
-        weight_t=weight,
-        delivery_sequence=integers.get("Delivery_Sequence"),
-        length_m=decimals.get("Length_m"),
-        delivery_batch=batch,
-        easting_m=decimals.get("Easting_m"),
-        northing_m=decimals.get("Northing_m"),
-        punch_through=punch_through,
-        difficulty_value=decimals.get("Difficulty_Value"),
-        eccentricity_limit_m=decimals.get("Eccentricity_Limit_m"),
-        fixed_trip=integers.get("Fixed_Trip"),
-        fixed_position=integers.get("Fixed_Position"),
-        earliest_sequence=earliest,
-        latest_sequence=latest,
-        notes=notes,
-    )
-    return foundation, issues, bool(include)
+def _cached_value(excel_row, index: int, cached: Worksheet | None) -> tuple[Any, str]:
+    if index >= len(excel_row):
+        return None, "value"
+    cell = excel_row[index]
+    cached_cell = cached.cell(cell.row, cell.column) if cached is not None else None
+    return _read_cell(cell, cached_cell)
+
+
+def _unknown_endpoints(
+    cables: list[CableRow], foundations: list[FoundationInput], wtg_rows: list[WtgRow]
+) -> list[Issue]:
+    known = {item.foundation_id.casefold() for item in foundations}
+    known.update(item.wtg_id.casefold() for item in wtg_rows)
+    issues: list[Issue] = []
+    for cable in cables:
+        for label, value in (
+            ("start", cable.start_location_id),
+            ("end", cable.end_location_id),
+        ):
+            if value and value.casefold() not in known:
+                issues.append(
+                    Issue(
+                        "warning",
+                        "unknown_endpoint",
+                        f"Cable {cable.cable_id} {label} location {value} is not a FOU or WTG id.",
+                        row_number=cable.source_row,
+                        column_name="Location ID",
+                    )
+                )
+    return issues
+
+
+def _optional_boolean(
+    values: dict[str, Any], key: str, row_number: int, label: str
+) -> tuple[bool | None, list[Issue]]:
+    if key not in values:
+        return None, []
+    value, error = _boolean(values.get(key), required=False)
+    if error:
+        return None, [
+            Issue(
+                "error",
+                "invalid_boolean",
+                f"Row {row_number} {label} must be Yes or No when provided.",
+                row_number=row_number,
+                column_name=label,
+            )
+        ]
+    return value, []
+
+
+def _plain_header(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip().casefold())
 
 
 def _text(value: Any) -> str:
@@ -467,18 +808,12 @@ def _text(value: Any) -> str:
     return str(value).strip()
 
 
-def _parse_bool(value: Any, *, required: bool) -> tuple[bool | None, bool]:
+def _boolean(value: Any, *, required: bool) -> tuple[bool | None, bool]:
     if _blank(value):
-        return (None, True) if required else (None, False)
+        return None, required
     if isinstance(value, bool):
         return value, False
-    if isinstance(value, (int, float, Decimal)) and not isinstance(value, bool):
-        if value == 1:
-            return True, False
-        if value == 0:
-            return False, False
-        return None, True
-    text = str(value).strip().casefold()
+    text = _text(value).casefold()
     if text in TRUE_TEXT:
         return True, False
     if text in FALSE_TEXT:
@@ -486,13 +821,9 @@ def _parse_bool(value: Any, *, required: bool) -> tuple[bool | None, bool]:
     return None, True
 
 
-def _parse_decimal(
-    value: Any, *, positive: bool, required: bool = False
-) -> tuple[Decimal | None, bool]:
-    if _blank(value):
-        return (None, True) if required else (None, False)
-    if isinstance(value, bool):
-        return None, True
+def _decimal(value: Any, *, positive: bool, required: bool) -> tuple[Decimal | None, bool]:
+    if _blank(value) or isinstance(value, bool):
+        return None, required
     try:
         number = Decimal(str(value))
     except (InvalidOperation, ValueError):
@@ -501,10 +832,10 @@ def _parse_decimal(
         return None, True
     if positive and number <= 0:
         return None, True
-    return number, False
+    return number.quantize(Decimal("0.001")), False
 
 
-def _parse_positive_int(value: Any) -> tuple[int | None, bool]:
+def _optional_int(value: Any) -> tuple[int | None, bool]:
     if _blank(value):
         return None, False
     if isinstance(value, bool):
@@ -516,3 +847,17 @@ def _parse_positive_int(value: Any) -> tuple[int | None, bool]:
     if number != number.to_integral_value() or number < 1:
         return None, True
     return int(number), False
+
+
+def _datetime(value: Any) -> tuple[datetime | None, bool]:
+    if _blank(value):
+        return None, False
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, date):
+        parsed = datetime(value.year, value.month, value.day)
+    else:
+        return None, True
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed, UTC)
+    return parsed, False

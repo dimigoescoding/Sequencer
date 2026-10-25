@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from decimal import Decimal
 from typing import Any
 
@@ -9,12 +10,18 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.constraints.models import Constraint
-from apps.datasets.services.mapping import to_foundation_input
+from apps.datasets.services.mapping import (
+    cable_activity,
+    location_coordinates,
+    to_foundation_input,
+    wtg_activity,
+)
 from apps.optimisation.models import OptimisationRun, SequenceResult, TripResult, ValidationResult
-from apps.optimisation.services.conflicts import find_conflicts
-from apps.optimisation.services.evaluation import evaluate
-from apps.optimisation.services.scaling import SOLVER_SEED
-from apps.optimisation.services.solver import solve_order
+from apps.optimisation.services.between_trips import optimise_trip_connections
+from apps.optimisation.services.conflicts import find_programme_conflicts
+from apps.optimisation.services.evaluation import evaluate, merge_evaluations
+from apps.optimisation.services.scaling import MAX_SOLVER_TIME_LIMIT_SECONDS, SOLVER_SEED
+from apps.optimisation.services.solver import solve_programme
 from apps.optimisation.services.types import ConstraintInput, ValidationRow, VesselConfig
 from apps.scenarios.models import Scenario, VesselSettings
 
@@ -25,15 +32,25 @@ class SolveBlocked(Exception):
         self.conflicts = conflicts
 
 
+class SolveBusy(Exception):
+    def __init__(self) -> None:
+        super().__init__("A sequence is already being generated.")
+
+
+_solve_lock = threading.Lock()
+
+
 def vessel_config(settings: VesselSettings) -> VesselConfig:
+    time_limit = min(settings.solver_time_limit_seconds, MAX_SOLVER_TIME_LIMIT_SECONDS)
     return VesselConfig(
         max_foundations_per_trip=settings.max_foundations_per_trip,
         allow_partial_final_trip=settings.allow_partial_final_trip,
         base_maximum_trip_payload_t=settings.base_maximum_trip_payload_t,
-        solver_time_limit_seconds=settings.solver_time_limit_seconds,
+        solver_time_limit_seconds=time_limit,
         transit_speed_knots=settings.transit_speed_knots,
         harbour_easting_m=settings.harbour_easting_m,
         harbour_northing_m=settings.harbour_northing_m,
+        wtg_per_trip=settings.wtg_per_trip,
     )
 
 
@@ -49,19 +66,31 @@ def constraint_input(row: Constraint) -> ConstraintInput:
         scope=row.scope,
         display_order=row.display_order,
         constraint_id=row.pk,
+        package=row.package or "FOU",
     )
 
 
 def scenario_context(scenario: Scenario):
+    foundations, cables, turbines, vessel, constraints, columns = programme_context(scenario)
+    return foundations, vessel, constraints, columns
+
+
+def programme_context(scenario: Scenario):
     dataset = scenario.dataset_version
     foundations = []
+    cables = []
+    turbines = []
     columns: set[str] = set()
     if dataset is not None:
         foundations = [to_foundation_input(row) for row in dataset.foundations.all()]
+        stored_wtg = list(dataset.wtg_locations.all())
+        turbines = [wtg_activity(row) for row in stored_wtg]
+        coordinates = location_coordinates(foundations, stored_wtg)
+        cables = [cable_activity(row, coordinates) for row in dataset.cables.all()]
         columns = set(dataset.columns_json or [])
     vessel = vessel_config(scenario.vessel_settings)
     constraints = [constraint_input(row) for row in scenario.constraints.all()]
-    return foundations, vessel, constraints, columns
+    return foundations, cables, turbines, vessel, constraints, columns
 
 
 def blocking_messages(scenario: Scenario) -> list[str]:
@@ -73,23 +102,42 @@ def blocking_messages(scenario: Scenario) -> list[str]:
         messages.append(
             "The selected dataset has critical validation errors. Correct the workbook and upload a new version."
         )
-    foundations, vessel, constraints, columns = scenario_context(scenario)
+    foundations, cables, turbines, vessel, constraints, columns = programme_context(scenario)
     if not dataset.error_count:
-        messages.extend(find_conflicts(foundations, vessel, constraints, columns))
+        messages.extend(
+            find_programme_conflicts(foundations, cables, turbines, vessel, constraints, columns)
+        )
     return messages
 
 
 def execute(scenario: Scenario) -> OptimisationRun:
+    if not _solve_lock.acquire(blocking=False):
+        raise SolveBusy()
+    try:
+        return _execute(scenario)
+    finally:
+        _solve_lock.release()
+
+
+def _execute(scenario: Scenario) -> OptimisationRun:
     messages = blocking_messages(scenario)
     if messages:
         raise SolveBlocked(messages)
-    foundations, vessel, constraints, _columns = scenario_context(scenario)
+    foundations, cables, turbines, vessel, constraints, _columns = programme_context(scenario)
     active = [item for item in constraints if item.active]
     started = timezone.now()
+    campaigns = []
     try:
-        status, objective, runtime, message, order = solve_order(foundations, vessel, constraints)
+        status, objective, runtime, message, campaigns = solve_programme(
+            foundations, cables, turbines, vessel, constraints
+        )
+        for campaign in campaigns:
+            if campaign.package == "FOU" and campaign.order:
+                campaign.order = optimise_trip_connections(
+                    campaign.order, foundations, campaign.vessel, campaign.constraints
+                )
     except Exception as exc:
-        status, objective, runtime, message, order = (
+        status, objective, runtime, message, campaigns = (
             "ERROR",
             None,
             0,
@@ -98,8 +146,22 @@ def execute(scenario: Scenario) -> OptimisationRun:
         )
     evaluation = None
     run_status = status
-    if order:
-        evaluation = evaluate(foundations, vessel, constraints, order)
+    solved = [campaign for campaign in campaigns if campaign.order]
+    if solved:
+        evaluation = merge_evaluations(
+            [
+                (
+                    campaign.package,
+                    evaluate(
+                        campaign.items,
+                        campaign.vessel,
+                        campaign.constraints,
+                        campaign.order,
+                    ),
+                )
+                for campaign in solved
+            ]
+        )
         if evaluation.validation_status != "Passed":
             run_status = "INVALID"
             message = (
@@ -113,7 +175,7 @@ def execute(scenario: Scenario) -> OptimisationRun:
         objective=objective,
         runtime=runtime,
         message=message,
-        order=order,
+        order=solved,
         evaluation=evaluation,
         active=active,
         vessel=vessel,
@@ -139,7 +201,12 @@ def _persist(
 ) -> OptimisationRun:
     # status may be INVALID after a hard-validation failure. solver_status stays
     # the value OR-Tools reported and is never rewritten as OPTIMAL.
-    included_count = sum(1 for item in scenario.dataset_version.foundations.all() if item.include)
+    dataset = scenario.dataset_version
+    included_count = (
+        sum(1 for item in dataset.foundations.all() if item.include)
+        + sum(1 for item in dataset.cables.all() if item.include)
+        + sum(1 for item in dataset.wtg_locations.all() if item.include)
+    )
     trip_count = len(evaluation.trip_rows) if evaluation else 0
     with transaction.atomic():
         run = OptimisationRun.objects.create(
@@ -223,6 +290,7 @@ def _vessel_snapshot(vessel: VesselConfig) -> dict[str, Any]:
         "transit_speed_knots": _json_number(vessel.transit_speed_knots),
         "harbour_easting_m": _json_number(vessel.harbour_easting_m),
         "harbour_northing_m": _json_number(vessel.harbour_northing_m),
+        "wtg_per_trip": vessel.wtg_per_trip,
     }
 
 
@@ -235,6 +303,7 @@ def _constraint_snapshot(constraint: ConstraintInput) -> dict[str, Any]:
         "enforcement": constraint.enforcement,
         "severity": constraint.severity,
         "scope": constraint.scope,
+        "package": constraint.package,
         "display_order": constraint.display_order,
         "parameters": constraint.parameters,
     }
@@ -242,6 +311,7 @@ def _constraint_snapshot(constraint: ConstraintInput) -> dict[str, Any]:
 
 def _sequence_kwargs(row) -> dict[str, Any]:
     return {
+        "package": row.package,
         "installation_sequence": row.installation_sequence,
         "trip": row.trip,
         "vessel_position": row.vessel_position,
@@ -266,6 +336,7 @@ def _sequence_kwargs(row) -> dict[str, Any]:
 
 def _trip_kwargs(row) -> dict[str, Any]:
     return {
+        "package": row.package,
         "trip": row.trip,
         "foundation_count": row.foundation_count,
         "foundations_in_order": row.foundations_in_order,

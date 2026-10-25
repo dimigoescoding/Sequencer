@@ -22,17 +22,16 @@
     {% else %}<p>No dataset selected.</p>{% endif %}
   </div></div></div>
   <div class="col-md-4"><div class="card h-100"><div class="card-body">
-    <h2 class="h6">Vessel</h2>
-    <p class="mb-1">{{ scenario.vessel_settings.max_foundations_per_trip }} foundations per trip</p>
-    <p class="mb-1">Partial final trip: {{ scenario.vessel_settings.allow_partial_final_trip|yesno:"yes,no" }}</p>
-    <p class="mb-1">Payload base: {% if scenario.vessel_settings.base_maximum_trip_payload_t %}{{ scenario.vessel_settings.base_maximum_trip_payload_t }} t{% else %}not set{% endif %}</p>
-    <p class="mb-1">Harbour: {% if scenario.vessel_settings.harbour_easting_m is not None %}{{ scenario.vessel_settings.harbour_easting_m }}, {{ scenario.vessel_settings.harbour_northing_m }}{% else %}not set{% endif %}</p>
-    <a href="{% url 'scenarios:settings' project.pk scenario.pk %}">Edit vessel settings</a>
+    <h2 class="h6">Settings</h2>
+    <p class="mb-1">FOU per trip: {{ scenario.vessel_settings.max_foundations_per_trip }}</p>
+    <p class="mb-1">WTG per trip: {{ scenario.vessel_settings.wtg_per_trip }}</p>
+    <p class="mb-1">Solver time: {{ scenario.vessel_settings.solver_time_limit_seconds }} seconds</p>
+    <a href="{% url 'scenarios:settings' project.pk scenario.pk %}">Edit settings</a>
   </div></div></div>
   <div class="col-md-4"><div class="card h-100"><div class="card-body">
     <h2 class="h6">Constraints</h2>
-    <p>{{ constraints|length }} saved</p>
-    <a href="{% url 'constraints:list' project.pk scenario.pk %}">Open constraint manager</a>
+    <p>{{ constraints|length }} on this scenario</p>
+    <a href="{% url 'constraints:list' project.pk scenario.pk %}">Edit constraints</a>
   </div></div></div>
 </div>
 <div class="card mt-3"><div class="card-body">

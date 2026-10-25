@@ -1,6 +1,5 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
@@ -35,8 +34,8 @@ def dataset_index(request, project_id: int):
             "form": form,
             "versions": project.dataset_versions.all(),
             "dataset": dataset,
-            "page_obj": _foundation_page(request, dataset),
             "issues": dataset.issues.all() if dataset else [],
+            **_sheet_context(request, dataset),
         },
     )
 
@@ -57,18 +56,23 @@ def dataset_upload(request, project_id: int):
         except UploadRejected as exc:
             form.add_error("workbook", str(exc))
         else:
+            summary = (
+                f"Upload complete. Version {version.version_number} is stored with "
+                f"{version.foundations.count()} FOU rows, {version.cables.count()} IAC rows, "
+                f"{version.wtg_locations.count()} WTG rows, and {version.programme_slots.count()} programme slots."
+            )
             if version.error_count:
                 messages.error(
                     request,
-                    "The workbook was stored, but critical errors block activation and optimisation.",
+                    summary + " Critical errors block activation and optimisation.",
                 )
             elif version.warning_count:
                 messages.warning(
                     request,
-                    "The workbook was stored with warnings. Warnings do not block optimisation.",
+                    summary + " Warnings do not block optimisation.",
                 )
             else:
-                messages.success(request, "Dataset version stored.")
+                messages.success(request, summary)
             return redirect("datasets:version", project_id=project.pk, version_id=version.pk)
     return render(request, "datasets/upload.html", {"project": project, "form": form})
 
@@ -80,7 +84,7 @@ def dataset_template(request, project_id: int):
         build_template(),
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-    response["Content-Disposition"] = 'attachment; filename="Foundation_Input_template.xlsx"'
+    response["Content-Disposition"] = 'attachment; filename="Sequencer_input_template.xlsx"'
     return response
 
 
@@ -94,9 +98,9 @@ def dataset_version(request, project_id: int, version_id: int):
         {
             "project": project,
             "dataset": version,
-            "page_obj": _foundation_page(request, version),
             "issues": version.issues.all(),
             "scenarios": project.scenarios.select_related("vessel_settings"),
+            **_sheet_context(request, version),
         },
     )
 
@@ -121,15 +125,68 @@ def dataset_original(request, project_id: int, version_id: int):
     try:
         handle = version.original_file.open("rb")
     except (FileNotFoundError, OSError) as exc:
-        raise Http404("The original workbook is no longer on disk.") from exc
+        raise Http404("The original workbook is no longer stored.") from exc
     return FileResponse(
         handle, as_attachment=True, filename=version.original_filename or "Foundation_Input.xlsx"
     )
 
 
-def _foundation_page(request, dataset):
+def _sheet_context(request, dataset):
+    sheet = request.GET.get("sheet", "fou")
+    if sheet not in {"fou", "iac", "wtg", "programme"}:
+        sheet = "fou"
+    return {
+        "sheet": sheet,
+        "foundations": _foundations(request, dataset) if sheet == "fou" else [],
+        "cables": _cables(request, dataset) if sheet == "iac" else [],
+        "wtgs": _wtgs(request, dataset) if sheet == "wtg" else [],
+        "slots": _slots(request, dataset) if sheet == "programme" else [],
+    }
+
+
+def _cables(request, dataset):
     if dataset is None:
-        return None
+        return []
+    rows = dataset.cables.all()
+    query = request.GET.get("q", "").strip()
+    if query:
+        rows = rows.filter(cable_id__icontains=query)
+    include = request.GET.get("include", "")
+    if include == "yes":
+        rows = rows.filter(include=True)
+    elif include == "no":
+        rows = rows.filter(include=False)
+    return rows.order_by("source_row", "id")
+
+
+def _wtgs(request, dataset):
+    if dataset is None:
+        return []
+    rows = dataset.wtg_locations.all()
+    query = request.GET.get("q", "").strip()
+    if query:
+        rows = rows.filter(wtg_id__icontains=query)
+    include = request.GET.get("include", "")
+    if include == "yes":
+        rows = rows.filter(include=True)
+    elif include == "no":
+        rows = rows.filter(include=False)
+    return rows.order_by("source_row", "id")
+
+
+def _slots(request, dataset):
+    if dataset is None:
+        return []
+    rows = dataset.programme_slots.all()
+    query = request.GET.get("q", "").strip()
+    if query.isdigit():
+        rows = rows.filter(slot=int(query))
+    return rows.order_by("slot", "id")
+
+
+def _foundations(request, dataset):
+    if dataset is None:
+        return []
     rows = dataset.foundations.all()
     query = request.GET.get("q", "").strip()
     if query:
@@ -144,5 +201,4 @@ def _foundation_page(request, dataset):
         sort = "source_row"
     if request.GET.get("dir") == "desc":
         sort = f"-{sort}"
-    rows = rows.order_by(sort, "id")
-    return Paginator(rows, 25).get_page(request.GET.get("page"))
+    return rows.order_by(sort, "id")

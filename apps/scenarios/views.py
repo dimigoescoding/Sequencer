@@ -4,10 +4,11 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 
 from apps.access import owned_project, owned_scenario
-from apps.optimisation.services.runner import SolveBlocked, blocking_messages, execute
+from apps.optimisation.services.runner import SolveBlocked, SolveBusy, blocking_messages, execute
 from apps.projects.services import duplicate_scenario
-from apps.scenarios.forms import ScenarioForm, VesselSettingsForm
+from apps.scenarios.forms import ProgrammeSettingsForm, ScenarioForm
 from apps.scenarios.models import VesselSettings
+from apps.scenarios.services.sync import sync_scenario_from_dataset
 
 
 @login_required
@@ -31,8 +32,10 @@ def scenario_create(request, project_id: int):
         scenario.project = project
         scenario.save()
         VesselSettings.objects.create(scenario=scenario)
+        sync_scenario_from_dataset(scenario)
         messages.success(
-            request, "Scenario created. Set vessel details before adding payload or harbour rules."
+            request,
+            "Scenario created. Add constraints and set FOU per trip and WTG per trip in the app.",
         )
         return redirect(scenario)
     return render(
@@ -58,9 +61,12 @@ def scenario_detail(request, project_id: int, scenario_id: int):
 @login_required
 def scenario_edit(request, project_id: int, scenario_id: int):
     scenario = owned_scenario(request.user, project_id, scenario_id)
+    previous_dataset = scenario.dataset_version_id
     form = ScenarioForm(scenario.project, request.POST or None, instance=scenario)
     if request.method == "POST" and form.is_valid():
-        form.save()
+        updated = form.save()
+        if updated.dataset_version_id != previous_dataset:
+            sync_scenario_from_dataset(updated)
         messages.success(request, "Scenario updated.")
         return redirect(scenario)
     return render(
@@ -94,10 +100,10 @@ def scenario_delete(request, project_id: int, scenario_id: int):
 @login_required
 def vessel_settings(request, project_id: int, scenario_id: int):
     scenario = owned_scenario(request.user, project_id, scenario_id)
-    form = VesselSettingsForm(request.POST or None, instance=scenario.vessel_settings)
+    form = ProgrammeSettingsForm(request.POST or None, instance=scenario.vessel_settings)
     if request.method == "POST" and form.is_valid():
         form.save()
-        messages.success(request, "Vessel settings saved.")
+        messages.success(request, "Settings saved.")
         return redirect(scenario)
     return render(
         request,
@@ -119,6 +125,11 @@ def generate(request, project_id: int, scenario_id: int):
             except SolveBlocked as exc:
                 conflicts = exc.conflicts
                 messages.error(request, "The solver was not started.")
+            except SolveBusy:
+                messages.error(
+                    request,
+                    "A sequence is already running on this server. Wait for it to finish, then try again.",
+                )
             else:
                 if run.status == "INFEASIBLE":
                     messages.error(

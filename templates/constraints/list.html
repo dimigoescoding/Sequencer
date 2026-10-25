@@ -8,28 +8,41 @@
   <h1 class="h3 mb-0">Constraints</h1>
   <a class="btn btn-primary" href="{% url 'constraints:choose' project.pk scenario.pk %}">Add constraint</a>
 </div>
-<p class="text-secondary">The application does not suggest, infer, or relax constraints. Inactive rows are stored and ignored by the solver.</p>
+<p class="text-secondary">Each constraint belongs to FOU, IAC, or WTG. Choose the package in the dropdown. The rule is used only for that package, inside the one programme solve. Explanation text is shown and is not turned into a rule.</p>
 {% if not constraints %}
-  <div class="card"><div class="card-body empty-state">No constraints yet.</div></div>
+  <div class="card"><div class="card-body empty-state">No constraints yet. Add one for FOU, IAC, or WTG.</div></div>
 {% else %}
   <div class="table-responsive card"><table class="table table-sm align-middle mb-0">
-    <thead><tr><th>Order</th><th>Name</th><th>Type</th><th>Enforcement</th><th>Severity</th><th>Active</th><th></th></tr></thead>
+    <thead><tr><th>Package</th><th>Name</th><th>Explanation</th><th>Rule</th><th>Type</th><th>Severity</th><th>Status</th><th></th></tr></thead>
     <tbody>
       {% for constraint in constraints %}
         <tr>
-          <td>{{ constraint.display_order }}</td>
-          <td>{{ constraint.name }}<div class="small text-secondary">{{ constraint.description|truncatewords:12 }}</div></td>
-          <td>{{ constraint.type_label }}</td>
+          <td>
+            <form method="post" action="{% url 'constraints:edit' project.pk scenario.pk constraint.pk %}">
+              {% csrf_token %}
+              <input type="hidden" name="enforcement" value="{{ constraint.enforcement }}">
+              {% if constraint.severity %}<input type="hidden" name="severity" value="{{ constraint.severity }}">{% endif %}
+              <select class="form-select form-select-sm" name="package" aria-label="Package for {{ constraint.name }}" onchange="this.form.submit()">
+                <option value="FOU" {% if constraint.package == "FOU" %}selected{% endif %}>FOU</option>
+                <option value="IAC" {% if constraint.package == "IAC" %}selected{% endif %}>IAC</option>
+                <option value="WTG" {% if constraint.package == "WTG" %}selected{% endif %}>WTG</option>
+              </select>
+            </form>
+          </td>
+          <td>{{ constraint.name }}</td>
+          <td>{{ constraint.description }}</td>
+          <td>{{ constraint.type_label }}{% if constraint.parameter_summary %}<div class="small text-secondary">{{ constraint.parameter_summary }}</div>{% endif %}</td>
           <td><span class="badge {{ constraint.enforcement|badge_class }}">{{ constraint.enforcement }}</span></td>
           <td>{% if constraint.severity %}{{ constraint.severity }}{% else %}—{% endif %}</td>
-          <td>{% if constraint.active %}Yes{% else %}No{% endif %}</td>
+          <td>{% if constraint.active %}<span class="badge text-bg-success">Active</span>{% else %}<span class="badge text-bg-secondary">Not active</span>{% endif %}</td>
           <td class="text-end text-nowrap">
-            <form method="post" action="{% url 'constraints:move' project.pk scenario.pk constraint.pk %}" class="d-inline">{% csrf_token %}<input type="hidden" name="direction" value="up"><button class="btn btn-sm btn-outline-secondary" type="submit">Up</button></form>
-            <form method="post" action="{% url 'constraints:move' project.pk scenario.pk constraint.pk %}" class="d-inline">{% csrf_token %}<input type="hidden" name="direction" value="down"><button class="btn btn-sm btn-outline-secondary" type="submit">Down</button></form>
             <a class="btn btn-sm btn-outline-primary" href="{% url 'constraints:edit' project.pk scenario.pk constraint.pk %}">Edit</a>
-            <form method="post" action="{% url 'constraints:duplicate' project.pk scenario.pk constraint.pk %}" class="d-inline">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" type="submit">Duplicate</button></form>
-            <form method="post" action="{% url 'constraints:toggle' project.pk scenario.pk constraint.pk %}" class="d-inline">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary" type="submit">{% if constraint.active %}Deactivate{% else %}Activate{% endif %}</button></form>
-            <form method="post" action="{% url 'constraints:delete' project.pk scenario.pk constraint.pk %}" class="d-inline" data-confirm="Delete this constraint?">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit">Delete</button></form>
+            <form method="post" action="{% url 'constraints:toggle' project.pk scenario.pk constraint.pk %}" class="d-inline">{% csrf_token %}
+              <button class="btn btn-sm btn-outline-secondary" type="submit">{% if constraint.active %}Deactivate{% else %}Activate{% endif %}</button>
+            </form>
+            <form method="post" action="{% url 'constraints:delete' project.pk scenario.pk constraint.pk %}" class="d-inline" data-confirm="Delete this constraint?">{% csrf_token %}
+              <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+            </form>
           </td>
         </tr>
       {% endfor %}

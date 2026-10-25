@@ -7,7 +7,16 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.constraints.models import Constraint
-from apps.datasets.models import DatasetIssue, DatasetVersion, Foundation
+from apps.datasets.models import (
+    Cable,
+    DatasetConstraint,
+    DatasetIssue,
+    DatasetSetting,
+    DatasetVersion,
+    Foundation,
+    ProgrammeSlot,
+    WtgLocation,
+)
 from apps.projects.models import Project
 from apps.scenarios.models import Scenario, VesselSettings
 
@@ -65,8 +74,59 @@ def duplicate_project(project: Project) -> Project:
                         earliest_sequence=row.earliest_sequence,
                         latest_sequence=row.latest_sequence,
                         notes=row.notes,
+                        attributes=row.attributes,
                     )
                     for row in version.foundations.all()
+                ]
+            )
+            Cable.objects.bulk_create(
+                [
+                    Cable(
+                        dataset_version=copied,
+                        source_row=row.source_row,
+                        cable_id=row.cable_id,
+                        nickname=row.nickname,
+                        include=row.include,
+                        string_id=row.string_id,
+                        loop_id=row.loop_id,
+                        start_location_id=row.start_location_id,
+                        end_location_id=row.end_location_id,
+                        spider_cable=row.spider_cable,
+                    )
+                    for row in version.cables.all()
+                ]
+            )
+            WtgLocation.objects.bulk_create(
+                [
+                    WtgLocation(
+                        dataset_version=copied,
+                        source_row=row.source_row,
+                        wtg_id=row.wtg_id,
+                        include=row.include,
+                        structure=row.structure,
+                        easting_m=row.easting_m,
+                        northing_m=row.northing_m,
+                        spider_location=row.spider_location,
+                        string_label=row.string_label,
+                        jacking_difficulty=row.jacking_difficulty,
+                    )
+                    for row in version.wtg_locations.all()
+                ]
+            )
+            ProgrammeSlot.objects.bulk_create(
+                [
+                    ProgrammeSlot(
+                        dataset_version=copied,
+                        source_row=row.source_row,
+                        slot=row.slot,
+                        fou_p50_start=row.fou_p50_start,
+                        fou_p50_end=row.fou_p50_end,
+                        iac_p50_start=row.iac_p50_start,
+                        iac_p50_end=row.iac_p50_end,
+                        wtg_p50_start=row.wtg_p50_start,
+                        wtg_p50_end=row.wtg_p50_end,
+                    )
+                    for row in version.programme_slots.all()
                 ]
             )
             DatasetIssue.objects.bulk_create(
@@ -80,6 +140,37 @@ def duplicate_project(project: Project) -> Project:
                         column_name=issue.column_name,
                     )
                     for issue in version.issues.all()
+                ]
+            )
+            DatasetConstraint.objects.bulk_create(
+                [
+                    DatasetConstraint(
+                        dataset_version=copied,
+                        package=item.package,
+                        name=item.name,
+                        explanation=item.explanation,
+                        enforcement=item.enforcement,
+                        severity=item.severity,
+                        reported_severity=item.reported_severity,
+                        active=item.active,
+                        constraint_type=item.constraint_type,
+                        parameters_json=item.parameters_json,
+                        source_row=item.source_row,
+                        display_order=item.display_order,
+                    )
+                    for item in version.constraint_rows.all()
+                ]
+            )
+            DatasetSetting.objects.bulk_create(
+                [
+                    DatasetSetting(
+                        dataset_version=copied,
+                        name=item.name,
+                        key=item.key,
+                        value=item.value,
+                        source_row=item.source_row,
+                    )
+                    for item in version.setting_rows.all()
                 ]
             )
             version_map[version.pk] = copied
@@ -103,12 +194,14 @@ def _copy_scenario(
     VesselSettings.objects.create(
         scenario=clone,
         max_foundations_per_trip=settings.max_foundations_per_trip,
+        wtg_per_trip=settings.wtg_per_trip,
         allow_partial_final_trip=settings.allow_partial_final_trip,
         base_maximum_trip_payload_t=settings.base_maximum_trip_payload_t,
         solver_time_limit_seconds=settings.solver_time_limit_seconds,
         transit_speed_knots=settings.transit_speed_knots,
         harbour_easting_m=settings.harbour_easting_m,
         harbour_northing_m=settings.harbour_northing_m,
+        workbook_values=settings.workbook_values,
     )
     Constraint.objects.bulk_create(
         [
@@ -121,6 +214,7 @@ def _copy_scenario(
                 enforcement=item.enforcement,
                 severity=item.severity,
                 scope=item.scope,
+                package=item.package,
                 parameters_json=item.parameters_json,
                 display_order=item.display_order,
             )

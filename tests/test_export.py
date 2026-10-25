@@ -11,7 +11,7 @@ from apps.projects.models import Project
 from apps.scenarios.models import Scenario, VesselSettings
 from django.contrib.auth import get_user_model
 from openpyxl import load_workbook
-from tests.support import valid_row, workbook_bytes
+from tests.support import information_workbook, location_row
 
 pytestmark = pytest.mark.django_db
 
@@ -29,11 +29,10 @@ REQUIRED_SHEETS = [
 def test_export_contains_the_audit_sheets():
     user = get_user_model().objects.create_user(username="exporter", password="local-pass-123")
     project = Project.objects.create(owner=user, name="Export", package_type="Foundation")
-    content = workbook_bytes(
+    content = information_workbook(
         [
-            valid_row("A", Weight_t=100),
-            valid_row("B", Weight_t=110, Delivery_Sequence=2, Include="No"),
-            valid_row("C", Weight_t=120, Delivery_Sequence=3),
+            location_row("A", **{"Aver. Weight[t]": 100}),
+            location_row("B", **{"Aver. Weight[t]": 110, "Location": 2}),
         ]
     )
     version = create_dataset_version(

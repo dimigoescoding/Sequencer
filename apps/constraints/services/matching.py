@@ -10,7 +10,13 @@ from typing import Any
 
 from apps.optimisation.services.types import FoundationInput
 
-BOOLEAN_ATTRIBUTES = {"Include", "Punch_Through"}
+BOOLEAN_ATTRIBUTES = {
+    "Include",
+    "Punch_Through",
+    "Spider location",
+    "Shallow location",
+    "Spider cable",
+}
 NUMERIC_ATTRIBUTES = {
     "Weight_t",
     "Delivery_Sequence",
@@ -23,8 +29,24 @@ NUMERIC_ATTRIBUTES = {
     "Fixed_Position",
     "Earliest_Sequence",
     "Latest_Sequence",
+    "Location",
 }
-STRING_ATTRIBUTES = {"Foundation_ID", "Delivery_Batch", "Notes"}
+STRING_ATTRIBUTES = {
+    "Foundation_ID",
+    "Delivery_Batch",
+    "Notes",
+    "Jacking difficulty",
+    "Jacking difficulty WTG",
+    "String",
+    "Structure",
+    "Cable ID",
+    "Nickname",
+    "String ID",
+    "Loop ID",
+    "Start location",
+    "End location",
+    "Soil difficulty",
+}
 ALL_ATTRIBUTES = BOOLEAN_ATTRIBUTES | NUMERIC_ATTRIBUTES | STRING_ATTRIBUTES
 
 OPERATORS = (
@@ -101,8 +123,9 @@ ORDERING_ATTRIBUTES = (
 
 
 def attribute_value(foundation: FoundationInput, attribute: str) -> Any:
-    field_name = ATTRIBUTE_FIELDS[attribute]
-    return getattr(foundation, field_name)
+    if attribute in ATTRIBUTE_FIELDS:
+        return getattr(foundation, ATTRIBUTE_FIELDS[attribute])
+    return foundation.attributes.get(attribute)
 
 
 def is_blank(value: Any) -> bool:
