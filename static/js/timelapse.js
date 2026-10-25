@@ -10,12 +10,8 @@
   var horizon = payload.horizon;
   var NS = "http://www.w3.org/2000/svg";
   var DAY = 86400000;
-  var colors = [
-    "#1f77b4", "#aec7e8", "#ff7f0e", "#ffbb78", "#2ca02c", "#98df8a",
-    "#d62728", "#ff9896", "#9467bd", "#c5b0d5", "#8c564b", "#c49c94",
-    "#e377c2", "#f7b6d2", "#7f7f7f", "#c7c7c7", "#bcbd22", "#dbdb8d",
-    "#17becf", "#9edae5"
-  ];
+  var packageColor = { FOU: "#1f77b4", IAC: "#2ca02c", WTG: "#ff7f0e" };
+  var dormant = "#b7c0ca";
   var time = origin;
   var playing = true;
   var timer = null;
@@ -73,7 +69,7 @@
   }
 
   function color(point) {
-    return colors[(point.trip - 1) % colors.length];
+    return packageColor[point.package] || packageColor.FOU;
   }
 
   function started(point) { return point.start <= time; }
@@ -117,38 +113,32 @@
   }
 
   function drawRoutes(points) {
-    var latest = 0;
-    var focus = 0;
+    var active = {};
     points.forEach(function (point) {
-      if (!started(point)) return;
-      if (point.trip > latest) latest = point.trip;
-      if (installing(point)) focus = point.trip;
+      if (started(point) && time < point.end) active[point.trip] = true;
     });
-    if (!focus) focus = latest;
     var i;
     for (i = 1; i < points.length; i += 1) {
       var previous = points[i - 1];
       var current = points[i];
-      if (previous.trip !== current.trip) continue;
+      if (previous.trip !== current.trip || !active[current.trip]) continue;
       if (!started(previous) || !started(current)) continue;
-      var faded = current.trip !== focus;
       svg.appendChild(el("line", {
         x1: layout.X(previous.x), y1: layout.Y(previous.y),
         x2: layout.X(current.x), y2: layout.Y(current.y),
         class: "route",
-        stroke: faded ? "#718096" : color(current),
-        "stroke-width": faded ? 2 : 5,
-        opacity: faded ? 0.15 : 0.95
+        stroke: color(current),
+        "stroke-width": 5,
+        opacity: 0.95
       }));
     }
   }
 
   function drawPoint(point) {
-    if (!started(point)) return;
     var px = layout.X(point.x);
     var py = layout.Y(point.y);
     var on = installing(point);
-    var fill = color(point);
+    var fill = started(point) ? color(point) : dormant;
     if (point.marker === "square") {
       var side = on ? 16 : 10;
       svg.appendChild(el("rect", {
