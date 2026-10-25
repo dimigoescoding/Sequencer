@@ -134,12 +134,34 @@
     }
   }
 
-  function drawPoint(point) {
-    var px = layout.X(point.x);
-    var py = layout.Y(point.y);
-    var on = installing(point);
-    var fill = started(point) ? color(point) : dormant;
-    if (point.marker === "square") {
+  function locations() {
+    var byId = {};
+    data.forEach(function (point) {
+      var place = byId[point.id];
+      if (!place) {
+        place = { id: point.id, x: point.x, y: point.y, fou: null, wtg: null };
+        byId[point.id] = place;
+      }
+      if (point.package === "WTG") place.wtg = point;
+      else place.fou = point;
+      if (point.package !== "WTG") {
+        place.x = point.x;
+        place.y = point.y;
+      }
+    });
+    return Object.keys(byId).map(function (id) { return byId[id]; });
+  }
+
+  function drawLocation(place) {
+    var fouDone = place.fou && started(place.fou);
+    var wtgDone = place.wtg && started(place.wtg);
+    var on = (place.fou && installing(place.fou)) || (place.wtg && installing(place.wtg));
+    var fill = dormant;
+    if (wtgDone) fill = packageColor.WTG;
+    else if (fouDone) fill = packageColor.FOU;
+    var px = layout.X(place.x);
+    var py = layout.Y(place.y);
+    if (wtgDone) {
       var side = on ? 16 : 10;
       svg.appendChild(el("rect", {
         x: px - side / 2, y: py - side / 2, width: side, height: side,
@@ -150,16 +172,29 @@
         cx: px, cy: py, r: on ? 8 : 5, class: "point", fill: fill
       }));
     }
-    if (!on) return;
-    svg.appendChild(el("circle", {
-      cx: px, cy: py, r: 16, fill: "none", stroke: fill, "stroke-width": 3, opacity: 0.85
-    }));
-    var dx = point.seq % 2 ? 12 : -12;
-    var anchor = point.seq % 2 ? "start" : "end";
-    var dy = point.package === "WTG" ? 18 : -12;
+    if (on) {
+      svg.appendChild(el("circle", {
+        cx: px, cy: py, r: 16, fill: "none", stroke: fill, "stroke-width": 3, opacity: 0.85
+      }));
+    }
+    var seq = (place.fou && place.fou.seq) || (place.wtg && place.wtg.seq) || 1;
+    var dx = seq % 2 ? 14 : -14;
+    var anchor = seq % 2 ? "start" : "end";
+    var installed = fouDone || wtgDone;
+    var nameSize = installed ? 16 : 12;
     svg.appendChild(el("text", {
-      x: px + dx, y: py + dy, "text-anchor": anchor, class: "label"
-    }, point.package + " " + point.id + "  #" + point.seq + "  T" + point.trip));
+      x: px + dx, y: py - 12, "text-anchor": anchor, class: "label",
+      style: "font-size:" + nameSize + "px"
+    }, place.id));
+    var lines = [];
+    if (fouDone) lines.push("#" + place.fou.seq + " T" + place.fou.trip);
+    if (wtgDone) lines.push("#" + place.wtg.seq + " T" + place.wtg.trip);
+    lines.forEach(function (line, index) {
+      svg.appendChild(el("text", {
+        x: px + dx, y: py + 18 + index * 14, "text-anchor": anchor, class: "label",
+        style: "font-size:12px"
+      }, line));
+    });
   }
 
   function statusText() {
@@ -187,7 +222,7 @@
     base();
     var grouped = groups();
     Object.keys(grouped).forEach(function (packageName) { drawRoutes(grouped[packageName]); });
-    data.forEach(drawPoint);
+    locations().forEach(drawLocation);
     document.getElementById("timelapse-status").textContent = statusText();
     document.getElementById("timelapse-slider").value = String(sliderValue());
   }
