@@ -15,13 +15,13 @@ Included:
 - User-defined hard and soft constraints, with severity 1–100 on soft constraints
 - CP-SAT optimisation, saved scenarios, and saved runs
 - Installation sequence, trip summary, independent validation, and a Visual tab
-- The Visual tab is an equal-scale easting/northing timelapse of the stored sequence. Lines stay inside a trip. Harbour transit and the join from one trip to the next are not drawn.
+- The Visual tab is an equal-scale easting/northing timelapse. FOU and WTG share one calendar taken from the programme P50 dates. A location is highlighted for its start-to-end window. Lines stay inside a trip. Harbour transit and the join from one trip to the next are not drawn.
 - Excel export
 - Django login, logout, and password change
 - PostgreSQL on Render, SQLite for local development
 - Automated tests
 
-Not included: geographic map tiles, other installation packages, dates, weather, cost, Monte Carlo, Gantt charts, PDF reports, AI or natural-language constraints, executable formulas, multiple vessels at once, real-time collaboration, and registration.
+Not included: geographic map tiles, weather, cost, Monte Carlo, Gantt charts, PDF reports, AI or natural-language constraints, executable formulas, multiple vessels at once, real-time collaboration, and registration. Programme P50 dates are shown on the Visual tab and are not solver windows.
 
 ## Technology
 
@@ -205,7 +205,7 @@ Do not add a second Free web service in the same workspace if you want the full 
 ## Known MVP limitations
 
 - One package, one vessel, and no simultaneous vessels.
-- No dates, weather, cost, geographic map tiles, Gantt charts, or PDF reports. The Visual tab plots stored easting and northing only.
+- Programme P50 dates drive the Visual tab playhead for FOU and WTG. They are not solver windows. No weather, cost, geographic map tiles, Gantt charts, or PDF reports.
 - No user registration or email verification.
 - At most 60 included foundations per solve, including total sailing distance.
 - Solver time is limited to 1–600 seconds. A feasible result inside the limit is labelled `FEASIBLE`, not `OPTIMAL`, unless OR-Tools proves optimality.

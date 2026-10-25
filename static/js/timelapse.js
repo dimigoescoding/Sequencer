@@ -1,24 +1,27 @@
-/* Installation timelapse. Within-trip legs only. Equal easting/northing scale. */
+/* Calendar timelapse. FOU circles, WTG squares. Within-trip legs only. */
 (function () {
   var node = document.getElementById("timelapse-data");
   var svg = document.getElementById("timelapse-map");
   if (!node || !svg) return;
-  var data = JSON.parse(node.textContent);
+  var payload = JSON.parse(node.textContent);
+  var data = payload.activities || [];
   if (!data.length) return;
+  var origin = payload.origin;
+  var horizon = payload.horizon;
   var NS = "http://www.w3.org/2000/svg";
+  var DAY = 86400000;
   var colors = [
     "#1f77b4", "#aec7e8", "#ff7f0e", "#ffbb78", "#2ca02c", "#98df8a",
     "#d62728", "#ff9896", "#9467bd", "#c5b0d5", "#8c564b", "#c49c94",
     "#e377c2", "#f7b6d2", "#7f7f7f", "#c7c7c7", "#bcbd22", "#dbdb8d",
     "#17becf", "#9edae5"
   ];
-  data.forEach(function (point) {
-    point.color = colors[(point.trip - 1) % colors.length];
-  });
-  var frame = 0;
+  var time = origin;
   var playing = true;
   var timer = null;
-  var delay = 600;
+  var delay = 400;
+  var pace = 7 * DAY;
+  var sliderMax = 1000;
   var layout = project(data);
 
   function el(tag, attrs, text) {
@@ -50,7 +53,7 @@
     };
   }
 
-  function step(span) {
+  function stepSize(span) {
     var rough = span / 6;
     if (rough <= 0) return 1;
     var power = Math.pow(10, Math.floor(Math.log10(rough)));
@@ -59,10 +62,27 @@
     return factor * power;
   }
 
+  function pad(value) {
+    return (value < 10 ? "0" : "") + value;
+  }
+
+  function formatDate(ms) {
+    var date = new Date(ms);
+    return date.getUTCFullYear() + "-" + pad(date.getUTCMonth() + 1) + "-" + pad(date.getUTCDate())
+      + " " + pad(date.getUTCHours()) + ":" + pad(date.getUTCMinutes());
+  }
+
+  function color(point) {
+    return colors[(point.trip - 1) % colors.length];
+  }
+
+  function started(point) { return point.start <= time; }
+  function installing(point) { return point.start <= time && time < point.end; }
+
   function base() {
     svg.innerHTML = "";
-    var xStep = step(layout.maxX - layout.minX);
-    var yStep = step(layout.maxY - layout.minY);
+    var xStep = stepSize(layout.maxX - layout.minX);
+    var yStep = stepSize(layout.maxY - layout.minY);
     var x = Math.ceil(layout.minX / xStep) * xStep;
     for (; x <= layout.maxX + xStep * 0.001; x += xStep) {
       var px = layout.X(x);
@@ -84,58 +104,135 @@
     }, "Northing [m]"));
   }
 
-  function draw() {
-    base();
-    var shown = data.slice(0, frame + 1);
-    var active = shown[shown.length - 1].trip;
+  function groups() {
+    var grouped = {};
+    data.forEach(function (point) {
+      if (!grouped[point.package]) grouped[point.package] = [];
+      grouped[point.package].push(point);
+    });
+    Object.keys(grouped).forEach(function (packageName) {
+      grouped[packageName].sort(function (left, right) { return left.seq - right.seq; });
+    });
+    return grouped;
+  }
+
+  function drawRoutes(points) {
+    var latest = 0;
+    var focus = 0;
+    points.forEach(function (point) {
+      if (!started(point)) return;
+      if (point.trip > latest) latest = point.trip;
+      if (installing(point)) focus = point.trip;
+    });
+    if (!focus) focus = latest;
     var i;
-    for (i = 1; i < shown.length; i += 1) {
-      var previous = shown[i - 1];
-      var current = shown[i];
+    for (i = 1; i < points.length; i += 1) {
+      var previous = points[i - 1];
+      var current = points[i];
       if (previous.trip !== current.trip) continue;
-      var faded = current.trip !== active;
+      if (!started(previous) || !started(current)) continue;
+      var faded = current.trip !== focus;
       svg.appendChild(el("line", {
         x1: layout.X(previous.x), y1: layout.Y(previous.y),
         x2: layout.X(current.x), y2: layout.Y(current.y),
         class: "route",
-        stroke: faded ? "#718096" : current.color,
+        stroke: faded ? "#718096" : color(current),
         "stroke-width": faded ? 2 : 5,
         opacity: faded ? 0.15 : 0.95
       }));
     }
-    shown.forEach(function (point, index) {
-      var px = layout.X(point.x);
-      var py = layout.Y(point.y);
-      var latest = index === shown.length - 1;
-      svg.appendChild(el("circle", {
-        cx: px, cy: py, r: latest ? 8 : 5, class: "point", fill: point.color
+  }
+
+  function drawPoint(point) {
+    if (!started(point)) return;
+    var px = layout.X(point.x);
+    var py = layout.Y(point.y);
+    var on = installing(point);
+    var fill = color(point);
+    if (point.marker === "square") {
+      var side = on ? 16 : 10;
+      svg.appendChild(el("rect", {
+        x: px - side / 2, y: py - side / 2, width: side, height: side,
+        class: "point", fill: fill
       }));
-      if (latest) {
-        svg.appendChild(el("circle", {
-          cx: px, cy: py, r: 14, fill: "none", stroke: point.color, "stroke-width": 3, opacity: 0.8
-        }));
-      }
-      var dx = point.seq % 2 ? 9 : -9;
-      var anchor = point.seq % 2 ? "start" : "end";
-      var dy = point.seq % 3 ? -9 : 15;
-      svg.appendChild(el("text", {
-        x: px + dx, y: py + dy, "text-anchor": anchor, class: "label"
-      }, point.id + "  #" + point.seq + "  T" + point.trip));
+    } else {
+      svg.appendChild(el("circle", {
+        cx: px, cy: py, r: on ? 8 : 5, class: "point", fill: fill
+      }));
+    }
+    if (!on) return;
+    svg.appendChild(el("circle", {
+      cx: px, cy: py, r: 16, fill: "none", stroke: fill, "stroke-width": 3, opacity: 0.85
+    }));
+    var dx = point.seq % 2 ? 12 : -12;
+    var anchor = point.seq % 2 ? "start" : "end";
+    var dy = point.package === "WTG" ? 18 : -12;
+    svg.appendChild(el("text", {
+      x: px + dx, y: py + dy, "text-anchor": anchor, class: "label"
+    }, point.package + " " + point.id + "  #" + point.seq + "  T" + point.trip));
+  }
+
+  function statusText() {
+    var text = formatDate(time);
+    var names = [];
+    data.forEach(function (point) {
+      if (installing(point)) names.push(point.package + " " + point.id);
     });
-    var point = shown[shown.length - 1];
-    document.getElementById("timelapse-status").textContent =
-      "Installed " + point.seq + "/" + data.length + " · Trip " + point.trip + " · " + point.id;
-    document.getElementById("timelapse-slider").value = String(frame + 1);
+    if (names.length) text += " · Installing " + names.join(", ");
+    ["FOU", "WTG"].forEach(function (packageName) {
+      var rows = data.filter(function (point) { return point.package === packageName; });
+      if (!rows.length) return;
+      var complete = rows.filter(function (point) { return time >= point.end; }).length;
+      text += " · " + packageName + " " + complete + "/" + rows.length + " complete";
+    });
+    return text;
+  }
+
+  function sliderValue() {
+    if (horizon <= origin) return 0;
+    return Math.round(((time - origin) / (horizon - origin)) * sliderMax);
+  }
+
+  function draw() {
+    base();
+    var grouped = groups();
+    Object.keys(grouped).forEach(function (packageName) { drawRoutes(grouped[packageName]); });
+    data.forEach(drawPoint);
+    document.getElementById("timelapse-status").textContent = statusText();
+    document.getElementById("timelapse-slider").value = String(sliderValue());
+  }
+
+  function nextStart(after) {
+    var found = null;
+    data.forEach(function (point) {
+      if (point.start > after && (found === null || point.start < found)) found = point.start;
+    });
+    return found;
+  }
+
+  function previousStart(before) {
+    var found = null;
+    data.forEach(function (point) {
+      if (point.start < before && (found === null || point.start > found)) found = point.start;
+    });
+    return found;
+  }
+
+  function advance() {
+    if (time >= horizon) {
+      time = origin;
+      draw();
+      return;
+    }
+    var boundary = nextStart(time);
+    var candidate = Math.min(horizon, time + pace);
+    time = boundary !== null && boundary < candidate ? boundary : candidate;
+    draw();
   }
 
   function schedule() {
     clearInterval(timer);
-    if (playing) {
-      timer = setInterval(function () {
-        frame = (frame + 1) % data.length;
-        draw();
-      }, delay);
-    }
+    if (playing) timer = setInterval(advance, delay);
   }
 
   document.getElementById("timelapse-play").onclick = function () {
@@ -144,22 +241,25 @@
     schedule();
   };
   document.getElementById("timelapse-prev").onclick = function () {
-    frame = Math.max(0, frame - 1);
+    var boundary = previousStart(time);
+    time = boundary === null ? origin : boundary;
     draw();
   };
   document.getElementById("timelapse-next").onclick = function () {
-    frame = Math.min(data.length - 1, frame + 1);
+    var boundary = nextStart(time);
+    time = boundary === null ? horizon : boundary;
     draw();
   };
   document.getElementById("timelapse-speed").onchange = function (event) {
-    delay = +event.target.value;
-    schedule();
+    pace = (+event.target.value) * DAY;
   };
-  document.getElementById("timelapse-slider").oninput = function (event) {
-    frame = +event.target.value - 1;
+  var slider = document.getElementById("timelapse-slider");
+  slider.max = String(sliderMax);
+  slider.oninput = function (event) {
+    var fraction = +event.target.value / sliderMax;
+    time = origin + fraction * Math.max(horizon - origin, 0);
     draw();
   };
-  document.getElementById("timelapse-slider").max = String(data.length);
   var stage = document.getElementById("timelapse-stage");
   var fullscreenButton = document.getElementById("timelapse-fullscreen");
   function fullscreenElement() {
@@ -170,18 +270,12 @@
   }
   fullscreenButton.onclick = function () {
     if (fullscreenElement() === stage) {
-      if (document.exitFullscreen) {
-        document.exitFullscreen();
-      } else if (document.webkitExitFullscreen) {
-        document.webkitExitFullscreen();
-      }
+      if (document.exitFullscreen) document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
       return;
     }
-    if (stage.requestFullscreen) {
-      stage.requestFullscreen();
-    } else if (stage.webkitRequestFullscreen) {
-      stage.webkitRequestFullscreen();
-    }
+    if (stage.requestFullscreen) stage.requestFullscreen();
+    else if (stage.webkitRequestFullscreen) stage.webkitRequestFullscreen();
   };
   document.addEventListener("fullscreenchange", syncFullscreenButton);
   document.addEventListener("webkitfullscreenchange", syncFullscreenButton);
