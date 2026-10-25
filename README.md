@@ -14,14 +14,13 @@ Included:
 - Vessel and trip settings
 - User-defined hard and soft constraints, with severity 1–100 on soft constraints
 - CP-SAT optimisation, saved scenarios, and saved runs
-- Installation sequence, trip summary, independent validation, and a Visual tab
-- The Visual tab is an equal-scale easting/northing timelapse. FOU and WTG share one calendar taken from the programme P50 dates. A location is highlighted for its start-to-end window. Lines stay inside a trip. Harbour transit and the join from one trip to the next are not drawn.
+- Installation sequence, trip summary, and independent validation
 - Excel export
 - Django login, logout, and password change
 - PostgreSQL on Render, SQLite for local development
 - Automated tests
 
-Not included: geographic map tiles, weather, cost, Monte Carlo, Gantt charts, PDF reports, AI or natural-language constraints, executable formulas, multiple vessels at once, real-time collaboration, and registration. Programme P50 dates are shown on the Visual tab and are not solver windows.
+Not included: maps, other installation packages, dates, weather, cost, Monte Carlo, Gantt charts, PDF reports, AI or natural-language constraints, executable formulas, multiple vessels at once, real-time collaboration, and registration.
 
 ## Technology
 
@@ -57,8 +56,8 @@ Open http://127.0.0.1:8000/ and log in. Local settings use `sequencer.settings.l
 | `CSRF_TRUSTED_ORIGINS` | Comma-separated `https://` origins. |
 | `RENDER_EXTERNAL_URL` | Set by Render. Added to hosts and CSRF origins. |
 | `SECURE_SSL_REDIRECT` | Production default `true`. |
-| `MEDIA_ROOT` | Local upload directory. Production stores workbooks in the database instead. |
-| `DJANGO_SUPERUSER_USERNAME`, `DJANGO_SUPERUSER_EMAIL`, `DJANGO_SUPERUSER_PASSWORD` | Local: `createsuperuser --noinput`. On Render Free, `start.sh` creates this user once if it does not exist. Do not commit them. |
+| `MEDIA_ROOT` | Upload directory. Render blueprint uses `/var/data/media`. |
+| `DJANGO_SUPERUSER_USERNAME`, `DJANGO_SUPERUSER_EMAIL`, `DJANGO_SUPERUSER_PASSWORD` | Used only by `createsuperuser --noinput`. Do not commit them. |
 
 ## Database setup
 
@@ -129,28 +128,28 @@ python manage.py check --deploy
 
 ## Excel input
 
-Download `Sequencer_input_template.xlsx` from a project's Foundation Data page. The workbook needs four sheets: `FOU data`, `IAC data`, `WTG data`, and `Programme`. Extra sheets are ignored. Constraints and trip settings are created in the app.
+Download `Foundation_Input_template.xlsx` from a project's Foundation Data page. The workbook needs one sheet, `Foundation_Input`.
 
-`FOU data` holds one foundation row. Include, WTG ID, Easting, and Northing are required. Average weight is required only when Include is Yes. Spider, shallow, and jacking may be blank. `IAC data` holds one cable per row, joining two location ids. `WTG data` holds one turbine row. `Programme` holds slot numbers and optional P50 start and end times for each package. A slot is not a location id.
+Mandatory columns: `Foundation_ID`, `Include`, `Weight_t`, `Delivery_Sequence`.
 
-On a scenario, the Package dropdown is FOU, IAC, or WTG. FOU per trip and WTG per trip are edited in settings. Solver time, from 1 to 600 seconds, is one limit for the whole programme.
+Optional columns: `Length_m`, `Delivery_Batch`, `Easting_m`, `Northing_m`, `Punch_Through`, `Difficulty_Value`, `Eccentricity_Limit_m`, `Fixed_Trip`, `Fixed_Position`, `Earliest_Sequence`, `Latest_Sequence`, `Notes`.
 
-Ids must be unique inside a sheet. Include accepts Yes or No. Macro-enabled workbooks are rejected. Formula text is not calculated. If Excel has stored a calculated value, that stored value is used.
+`Foundation_ID` must be unique. `Include` and `Punch_Through` accept Yes/No, True/False, or 1/0. `Weight_t` must be positive. Sequence fields must be positive integers when present, and earliest cannot exceed latest. Empty optional cells stay null. Formulas and macro-enabled workbooks are rejected and are not executed.
 
-Critical errors block activation and optimisation. Choosing another dataset does not delete the scenario's constraints or trip settings. The solver builds one sequence for the included packages. It does not invent a buffer or a package order. If a hard check fails, the whole run is invalid.
+Critical errors block activation and optimisation. Warnings, such as missing coordinates, do not. `Fixed_Trip`, `Fixed_Position`, `Earliest_Sequence`, and `Latest_Sequence` in the sheet are stored data. They are not turned into constraints unless you add those constraints yourself. A `Fixed_Position` above the scenario capacity is reported before the solver starts.
 
-Uploads are limited to `.xlsx` files of at most 2 MB.
+Uploads are limited to `.xlsx` files of at most 10 MB.
 
 ## Supported constraint types
 
-Each constraint is a database record with enforcement `hard` or `soft`. Soft constraints require a severity from 1 to 100. Hard constraints do not use severity. You can change that choice on the constraint. The solver does not make the change for you.
+Each constraint is a database record with enforcement `hard` or `soft`. Soft constraints require a severity from 1 to 100. Hard constraints do not use severity and are never converted to soft.
 
 - Maximum trip payload
 - Fixed trip
 - Fixed vessel position
 - Allowed vessel positions by attribute
 - Excluded vessel positions by attribute
-- Earliest trip
+- Earliest sequence position
 - Latest sequence position
 - Precedence
 - Maximum matching foundations per trip
@@ -160,9 +159,7 @@ Each constraint is a database record with enforcement `hard` or `soft`. Soft con
 - Attribute ordering
 - Delivery-sequence alignment
 - Difficulty progression
-- Minimise total sailing distance
-- Matching locations first
-- Avoid matches in the first trips
+- Minimise within-trip distance
 
 Attribute rules use a fixed operator list (`equals`, `does_not_equal`, `greater_than`, `greater_than_or_equal`, `less_than`, `less_than_or_equal`, `between`, `in_list`, `not_in_list`, `is_blank`, `is_not_blank`) against columns in the uploaded dataset. The rule builder does not accept free-text logic or code.
 
@@ -178,39 +175,26 @@ Sign in, create a project, upload a workbook, activate a valid dataset, create a
 
 ## Render deployment
 
-`render.yaml` is written for the Render Free plan. It creates one Free web service and one Free PostgreSQL 16 database. A workspace can have only one Free database, and that database expires 30 days after creation. Render then allows 14 days to upgrade it before deleting the data. There are no backups on the Free database.
-
-Free web service limits that this configuration respects:
-
-- 512 MB RAM and 0.1 CPU. Gunicorn runs one worker and two threads, so a health check can still be served during a solve. A second solve is refused until the first finishes.
-- No persistent disk, and no shell. Local files disappear when the service sleeps, restarts, or redeploys. Original workbooks are stored in Postgres through Django's storage API. Exports are built from database rows.
-- The service sleeps after 15 minutes without a request and takes about a minute to wake. Sleeping does not consume the 750 Free instance hours granted per workspace each month.
-- The solver time limit is 1–600 seconds. Gunicorn waits up to 660 seconds so that run can finish. A result found before a proof is `FEASIBLE`, not `OPTIMAL`.
-- At most 60 included foundations per solve, including total sailing distance. Larger models are rejected before CP-SAT starts.
-- Workbooks are limited to 2 MB so a few uploads cannot fill the 1 GB database.
-
-Steps:
+`render.yaml` defines a Python web service and a PostgreSQL 16 database.
 
 1. Push this repository to GitHub.
-2. In Render, create a Blueprint from `render.yaml`.
-3. Leave `SECRET_KEY` as the generated value. Do not commit it.
-4. In the web service environment, set `DJANGO_SUPERUSER_USERNAME`, `DJANGO_SUPERUSER_EMAIL`, and `DJANGO_SUPERUSER_PASSWORD`. The start command creates that user once and does not reset the password after that.
-5. The build command is `./build.sh`: install dependencies, `collectstatic`, and `migrate`.
-6. The start command is `./start.sh`: migrate, create the administrator if needed, then Gunicorn.
-7. Health check path: `/healthz/`.
-8. Open the `onrender.com` URL. The first request after idle shows Render's wake-up page, then the login page.
+2. In Render, create a Blueprint from `render.yaml`, or create the web service and database by hand using the same commands.
+3. Confirm `SECRET_KEY` is generated by Render and is not in git.
+4. The build command is `./build.sh`: install dependencies, `collectstatic`, and `migrate`.
+5. The start command is Gunicorn with a 180 second timeout so a 120 second solve can finish.
+6. Health check path: `/accounts/login/`.
+7. Create the first user with a Render shell: `python manage.py createsuperuser`.
 
-Do not add a second Free web service in the same workspace if you want the full monthly hour allowance available for Sequencer. Do not point the app at a database outside Render; Free services that generate a high volume of public outbound traffic can be suspended.
+Uploaded files use Django's storage API (`FileField` and `default_storage`). The blueprint mounts a 1 GB disk at `/var/data` and sets `MEDIA_ROOT=/var/data/media`. That disk is tied to the service. Replacing the service, or running without the disk, loses uploaded workbooks. Optimisation results and exports are stored in PostgreSQL and can be exported again. Object storage can replace `STORAGES["default"]` later without changing the parser, solver, or export services.
 
 ## Known MVP limitations
 
 - One package, one vessel, and no simultaneous vessels.
-- Programme P50 dates drive the Visual tab playhead for FOU and WTG. They are not solver windows. No weather, cost, geographic map tiles, Gantt charts, or PDF reports.
+- No dates, weather, cost, maps, Gantt charts, or PDF reports.
 - No user registration or email verification.
-- At most 60 included foundations per solve, including total sailing distance.
-- Solver time is limited to 1–600 seconds. A feasible result inside the limit is labelled `FEASIBLE`, not `OPTIMAL`, unless OR-Tools proves optimality.
-- The hosted database on the Free plan expires 30 days after creation. Upgrade it before the grace period ends if the data should be kept.
-- An active distance constraint minimises total sailing distance: every foundation-to-foundation leg, including the leg that joins one trip to the next. For larger sets the search re-solves stretches of the sequence, including stretches that cross a trip boundary. Harbour transit is not included. It has no numeric distance cap. The validator reports within-trip, trip-to-trip, and total distance in nautical miles.
+- At most 100 included foundations per solve. Within-trip distance is modelled for at most 30.
+- Solver time is limited to 1–120 seconds. A feasible result inside the limit is labelled `FEASIBLE`, not `OPTIMAL`, unless OR-Tools proves optimality.
+- A hard "minimise distance" constraint has no numeric distance cap. It is a primary objective term. The validator reports it as information, not a pass/fail limit.
 - A soft payload limit can return an overloaded trip. The interface warns about that, and the excess is a soft trade-off.
 - Direct conflicts are blocked before the solver. Indirect conflicts become `INFEASIBLE` with no sequence. Nothing is relaxed automatically.
 - Spreadsheet `Fixed_*` columns are inputs, not automatic constraints.
@@ -219,8 +203,6 @@ Do not add a second Free web service in the same workspace if you want the full 
 ## Verification recorded for this repository
 
 `python manage.py check --deploy` was run with production settings, a generated `SECRET_KEY`, `ALLOWED_HOSTS=localhost`, SQLite, and `SECURE_SSL_REDIRECT=true`. It finished with exit code 0 and one warning, `security.W021`, because `SECURE_HSTS_PRELOAD` is intentionally false.
-
-After the Free-plan changes, `pytest` reported 40 passed and `ruff check .` passed.
 
 These commands were run in this workspace after implementation:
 

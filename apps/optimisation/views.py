@@ -5,10 +5,8 @@ from django.shortcuts import render
 
 from apps.access import owned_run
 from apps.exports.services.workbook import build_run_workbook, export_filename
-from apps.optimisation.services.timelapse import timelapse_payload
 
 SEQUENCE_SORTS = {
-    "package",
     "installation_sequence",
     "trip",
     "vessel_position",
@@ -33,8 +31,7 @@ def run_detail(request, run_id: int):
         sort = "installation_sequence"
     if request.GET.get("dir") == "desc":
         sort = f"-{sort}"
-    rows = rows.order_by(sort, "package", "installation_sequence", "id")
-    tab = request.GET.get("tab", "sequence")
+    rows = rows.order_by(sort, "id")
     return render(
         request,
         "optimisation/run.html",
@@ -45,8 +42,7 @@ def run_detail(request, run_id: int):
             "page_obj": Paginator(rows, 25).get_page(request.GET.get("page")),
             "trips": run.trip_rows.all(),
             "checks": run.validation_rows.all(),
-            "tab": tab,
-            "timelapse": timelapse_payload(run) if tab == "visual" else None,
+            "tab": request.GET.get("tab", "sequence"),
             "hard_constraints": [
                 item
                 for item in run.constraint_snapshot or []

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% load sequencer_tags static %}
+{% load sequencer_tags %}
 {% block title %}Run {{ run.pk }} — Sequencer{% endblock %}
 {% block content %}
-{% include "partials/project_nav.html" with nav="scenarios" %}
+{% include "partials/project_nav.html" with nav="runs" %}
 {% include "partials/scenario_nav.html" with snav="results" %}
 <div class="d-flex justify-content-between align-items-start">
   <div>
@@ -35,18 +35,17 @@
   <li class="nav-item"><a class="nav-link {% if tab == 'sequence' %}active{% endif %}" href="{% querystring tab='sequence' page=1 %}">Installation sequence</a></li>
   <li class="nav-item"><a class="nav-link {% if tab == 'trips' %}active{% endif %}" href="{% querystring tab='trips' %}">Trip summary</a></li>
   <li class="nav-item"><a class="nav-link {% if tab == 'validation' %}active{% endif %}" href="{% querystring tab='validation' %}">Validation</a></li>
-  <li class="nav-item"><a class="nav-link {% if tab == 'visual' %}active{% endif %}" href="{% querystring tab='visual' %}">Visual</a></li>
 </ul>
 <div class="card border-top-0"><div class="card-body">
   {% if tab == 'trips' %}
     {% if not trips %}<p class="empty-state">No trip summary was produced.</p>{% else %}
       <div class="table-responsive"><table class="table table-sm">
-        <thead><tr><th>Package</th><th>Trip</th><th>Foundation_Count</th><th>Foundations_In_Order</th><th>Payload_Limit_t</th><th>Total_Weight_t</th><th>Remaining_Payload_t</th><th>Punch_Through_Count</th><th>Average_Difficulty</th><th>Maximum_Difficulty</th><th>Route_Distance_nm</th><th>Payload_Check</th><th>Position_Check</th><th>Overall_Trip_Check</th></tr></thead>
+        <thead><tr><th>Trip</th><th>Foundation_Count</th><th>Foundations_In_Order</th><th>Payload_Limit_t</th><th>Total_Weight_t</th><th>Remaining_Payload_t</th><th>Punch_Through_Count</th><th>Average_Difficulty</th><th>Maximum_Difficulty</th><th>Route_Distance</th><th>Payload_Check</th><th>Position_Check</th><th>Overall_Trip_Check</th></tr></thead>
         <tbody>{% for row in trips %}<tr>
-          <td>{{ row.package }}</td><td>{{ row.trip }}</td><td>{{ row.foundation_count }}</td><td>{{ row.foundations_in_order }}</td>
+          <td>{{ row.trip }}</td><td>{{ row.foundation_count }}</td><td>{{ row.foundations_in_order }}</td>
           <td>{{ row.payload_limit_t|default:"—" }}</td><td>{{ row.total_weight_t }}</td><td>{{ row.remaining_payload_t|default:"—" }}</td>
           <td>{{ row.punch_through_count }}</td><td>{{ row.average_difficulty|default:"—" }}</td><td>{{ row.maximum_difficulty|default:"—" }}</td>
-          <td>{% if row.route_distance is None %}—{% else %}{{ row.route_distance|nautical_miles }}{% endif %}</td>
+          <td>{% if row.route_distance is None %}—{% else %}{{ row.route_distance }} m{% endif %}</td>
           <td><span class="badge {{ row.payload_check|badge_class }}">{{ row.payload_check }}</span></td>
           <td><span class="badge {{ row.position_check|badge_class }}">{{ row.position_check }}</span></td>
           <td><span class="badge {{ row.overall_trip_check|badge_class }}">{{ row.overall_trip_check }}</span></td>
@@ -63,43 +62,6 @@
         </tr>{% endfor %}</tbody>
       </table></div>
     {% endif %}
-  {% elif tab == 'visual' %}
-    <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-2">
-      <div>
-        <h2 class="h5 mb-1">Installation sequence</h2>
-        <p class="small text-secondary mb-0">Easting/Northing · equal scale · calendar time · circle FOU · square WTG · no harbour or inter-trip legs{% if timelapse.within_trip %} · within-trip {{ timelapse.within_trip }}{% endif %}</p>
-      </div>
-    </div>
-    {% if timelapse.activities %}
-      <div id="timelapse-stage" class="timelapse-stage">
-        <div id="timelapse-status" class="fw-bold mb-2"></div>
-        <svg id="timelapse-map" class="timelapse-map" viewBox="0 0 1500 860" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Installation sequence on easting and northing axes"></svg>
-        <div class="timelapse-controls">
-          <button type="button" id="timelapse-play">Pause</button>
-          <button type="button" id="timelapse-prev">◀ Step</button>
-          <button type="button" id="timelapse-next">Step ▶</button>
-          <label>Pace
-            <select id="timelapse-speed">
-              <option value="1">1 day</option>
-              <option value="7" selected>1 week</option>
-              <option value="30">30 days</option>
-              <option value="90">90 days</option>
-            </select>
-          </label>
-          <input id="timelapse-slider" type="range" min="0" max="1000" value="0">
-          <span class="small text-secondary">One calendar for FOU and WTG. A location is highlighted from its P50 start until its P50 end. Step jumps to the next installation.</span>
-          <button type="button" id="timelapse-fullscreen">Full screen</button>
-        </div>
-      </div>
-      {{ timelapse.player|json_script:"timelapse-data" }}
-      <script src="{% static 'js/timelapse.js' %}"></script>
-    {% elif timelapse.missing %}
-      <p class="empty-state">These locations have no easting or northing, so the plot is not drawn: {{ timelapse.missing|join:", " }}.</p>
-    {% elif timelapse.notice %}
-      <p class="empty-state">{{ timelapse.notice }}</p>
-    {% else %}
-      <p class="empty-state">No sequence was stored, so there is nothing to plot.</p>
-    {% endif %}
   {% else %}
     <form class="row g-2 mb-3" method="get">
       <input type="hidden" name="tab" value="sequence">
@@ -110,7 +72,6 @@
       <div class="table-responsive"><table class="table table-sm">
         <thead><tr>
           <th><a href="{% querystring tab='sequence' sort='installation_sequence' dir='asc' page=1 %}">Installation_Sequence</a></th>
-          <th><a href="{% querystring tab='sequence' sort='package' dir='asc' page=1 %}">Package</a></th>
           <th><a href="{% querystring tab='sequence' sort='trip' dir='asc' page=1 %}">Trip</a></th>
           <th>Vessel_Position</th>
           <th><a href="{% querystring tab='sequence' sort='foundation_id' dir='asc' page=1 %}">Foundation_ID</a></th>
@@ -119,7 +80,7 @@
           <th>Earliest_Sequence</th><th>Latest_Sequence</th><th>Hard_Constraint_Status</th><th>Soft_Penalty</th><th>Governing_Constraints</th><th>Notes</th>
         </tr></thead>
         <tbody>{% for row in page_obj %}<tr>
-          <td>{{ row.installation_sequence }}</td><td>{{ row.package }}</td><td>{{ row.trip }}</td><td>{{ row.vessel_position }}</td><td>{{ row.foundation_id }}</td>
+          <td>{{ row.installation_sequence }}</td><td>{{ row.trip }}</td><td>{{ row.vessel_position }}</td><td>{{ row.foundation_id }}</td>
           <td>{{ row.weight_t }}</td><td>{{ row.trip_total_weight_t }}</td><td>{{ row.delivery_sequence|default:"—" }}</td><td>{{ row.sequence_deviation|default:"—" }}</td>
           <td>{{ row.delivery_batch|default:"—" }}</td><td>{{ row.difficulty_value|default:"—" }}</td>
           <td>{% if row.punch_through is None %}—{% elif row.punch_through %}Yes{% else %}No{% endif %}</td>

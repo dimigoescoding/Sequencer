@@ -1,124 +1,69 @@
 {% load sequencer_tags %}
 <div class="card">
   <div class="card-body">
+    <h2 class="h5">Parsed foundations</h2>
     {% if not dataset %}
-      <h2 class="h5">Workbook sheets</h2>
-      <p class="empty-state mb-0">Activate a dataset to review FOU, IAC, WTG, and Programme.</p>
+      <p class="empty-state mb-0">Activate a dataset to review the parsed table.</p>
     {% else %}
-      <ul class="nav nav-tabs">
-        <li class="nav-item"><a class="nav-link {% if sheet == 'fou' %}active{% endif %}" href="{% querystring sheet='fou' q='' include='' %}">FOU data</a></li>
-        <li class="nav-item"><a class="nav-link {% if sheet == 'iac' %}active{% endif %}" href="{% querystring sheet='iac' q='' include='' %}">IAC data</a></li>
-        <li class="nav-item"><a class="nav-link {% if sheet == 'wtg' %}active{% endif %}" href="{% querystring sheet='wtg' q='' include='' %}">WTG data</a></li>
-        <li class="nav-item"><a class="nav-link {% if sheet == 'programme' %}active{% endif %}" href="{% querystring sheet='programme' q='' include='' %}">Programme</a></li>
-      </ul>
-      <form class="row g-2 my-3" method="get">
-        <input type="hidden" name="sheet" value="{{ sheet }}">
-        <div class="col-md-4"><input class="form-control" type="search" name="q" value="{{ request.GET.q }}" placeholder="{% if sheet == 'programme' %}Slot number{% elif sheet == 'iac' %}Cable ID{% else %}WTG ID{% endif %}"></div>
-        {% if sheet != 'programme' %}
-          <div class="col-md-3">
-            <select class="form-select" name="include">
-              <option value="">All rows</option>
-              <option value="yes" {% if request.GET.include == "yes" %}selected{% endif %}>Included</option>
-              <option value="no" {% if request.GET.include == "no" %}selected{% endif %}>Excluded</option>
-            </select>
-          </div>
-        {% endif %}
+      <form class="row g-2 mb-3" method="get">
+        <div class="col-md-4"><input class="form-control" type="search" name="q" value="{{ request.GET.q }}" placeholder="Search Foundation_ID"></div>
+        <div class="col-md-3">
+          <select class="form-select" name="include">
+            <option value="">All rows</option>
+            <option value="yes" {% if request.GET.include == "yes" %}selected{% endif %}>Included</option>
+            <option value="no" {% if request.GET.include == "no" %}selected{% endif %}>Excluded</option>
+          </select>
+        </div>
         <div class="col-md-2"><button class="btn btn-outline-primary" type="submit">Filter</button></div>
       </form>
-      {% if sheet == 'fou' %}
-        {% if not foundations %}<p class="empty-state">No FOU rows match this filter.</p>{% else %}
-          <div class="foundation-scroll"><table class="table table-sm table-striped mb-0">
-            <thead><tr>
-              <th>Row</th><th>WTG ID</th><th>Include</th><th>Structure</th><th>Weight [t]</th>
-              <th>Spider</th><th>Shallow</th><th>Jacking</th><th>Easting</th><th>Northing</th>
-            </tr></thead>
+      {% if not page_obj.object_list %}
+        <p class="empty-state">No foundations match this filter.</p>
+      {% else %}
+        <div class="table-responsive">
+          <table class="table table-sm table-striped">
+            <thead>
+              <tr>
+                <th><a href="{% querystring sort='source_row' dir='asc' page=1 %}">Row</a></th>
+                <th><a href="{% querystring sort='foundation_id' dir='asc' page=1 %}">Foundation_ID</a></th>
+                <th>Include</th>
+                <th><a href="{% querystring sort='weight_t' dir='asc' page=1 %}">Weight_t</a></th>
+                <th>Delivery_Sequence</th>
+                <th>Delivery_Batch</th>
+                <th>Punch_Through</th>
+                <th>Difficulty</th>
+                <th>Easting</th>
+                <th>Northing</th>
+                <th>Fixed_Trip</th>
+                <th>Fixed_Position</th>
+                <th>Earliest</th>
+                <th>Latest</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
             <tbody>
-              {% for row in foundations %}
+              {% for row in page_obj %}
                 <tr>
                   <td>{{ row.source_row|default:"—" }}</td>
                   <td>{{ row.foundation_id }}</td>
-                  <td>{% if row.include %}Yes{% else %}No{% endif %}</td>
-                  <td>{{ row.attributes|attr:"Structure" }}</td>
+                  <td>{% if row.include is None %}—{% elif row.include %}Yes{% else %}No{% endif %}</td>
                   <td class="mono">{{ row.weight_t|default:"—" }}</td>
-                  <td>{{ row.attributes|attr:"Spider location" }}</td>
-                  <td>{{ row.attributes|attr:"Shallow location" }}</td>
-                  <td>{{ row.attributes|attr:"Jacking difficulty" }}</td>
+                  <td>{{ row.delivery_sequence|default:"—" }}</td>
+                  <td>{{ row.delivery_batch|default:"—" }}</td>
+                  <td>{% if row.punch_through is None %}—{% elif row.punch_through %}Yes{% else %}No{% endif %}</td>
+                  <td>{{ row.difficulty_value|default:"—" }}</td>
                   <td>{{ row.easting_m|default:"—" }}</td>
                   <td>{{ row.northing_m|default:"—" }}</td>
+                  <td>{{ row.fixed_trip|default:"—" }}</td>
+                  <td>{{ row.fixed_position|default:"—" }}</td>
+                  <td>{{ row.earliest_sequence|default:"—" }}</td>
+                  <td>{{ row.latest_sequence|default:"—" }}</td>
+                  <td>{{ row.notes|default:"—" }}</td>
                 </tr>
               {% endfor %}
             </tbody>
-          </table></div>
-        {% endif %}
-      {% elif sheet == 'iac' %}
-        {% if not cables %}<p class="empty-state">No IAC rows match this filter.</p>{% else %}
-          <div class="foundation-scroll"><table class="table table-sm table-striped mb-0">
-            <thead><tr>
-              <th>Row</th><th>Cable ID</th><th>Nickname</th><th>Include</th><th>String</th><th>Loop</th>
-              <th>Start</th><th>End</th><th>Spider cable</th>
-            </tr></thead>
-            <tbody>
-              {% for row in cables %}
-                <tr>
-                  <td>{{ row.source_row|default:"—" }}</td>
-                  <td>{{ row.cable_id }}</td>
-                  <td>{{ row.nickname|default:"—" }}</td>
-                  <td>{% if row.include %}Yes{% elif row.include == False %}No{% else %}—{% endif %}</td>
-                  <td>{{ row.string_id|default:"—" }}</td>
-                  <td>{{ row.loop_id|default:"—" }}</td>
-                  <td>{{ row.start_location_id|default:"—" }}</td>
-                  <td>{{ row.end_location_id|default:"—" }}</td>
-                  <td>{% if row.spider_cable is None %}—{% elif row.spider_cable %}Yes{% else %}No{% endif %}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table></div>
-        {% endif %}
-      {% elif sheet == 'wtg' %}
-        {% if not wtgs %}<p class="empty-state">No WTG rows match this filter.</p>{% else %}
-          <div class="foundation-scroll"><table class="table table-sm table-striped mb-0">
-            <thead><tr>
-              <th>Row</th><th>WTG ID</th><th>Include</th><th>Structure</th><th>Easting</th><th>Northing</th><th>Jacking difficulty WTG</th>
-            </tr></thead>
-            <tbody>
-              {% for row in wtgs %}
-                <tr>
-                  <td>{{ row.source_row|default:"—" }}</td>
-                  <td>{{ row.wtg_id }}</td>
-                  <td>{% if row.include %}Yes{% elif row.include == False %}No{% else %}—{% endif %}</td>
-                  <td>{{ row.structure|default:"—" }}</td>
-                  <td>{{ row.easting_m|default:"—" }}</td>
-                  <td>{{ row.northing_m|default:"—" }}</td>
-                  <td>{{ row.jacking_difficulty|default:"—" }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table></div>
-        {% endif %}
-      {% else %}
-        {% if not slots %}<p class="empty-state">No programme slots match this filter.</p>{% else %}
-          <div class="foundation-scroll"><table class="table table-sm table-striped mb-0">
-            <thead><tr>
-              <th>Location</th>
-              <th>FOU P50 start</th><th>FOU P50 end</th>
-              <th>IAC P50 start</th><th>IAC P50 end</th>
-              <th>WTG P50 start</th><th>WTG P50 end</th>
-            </tr></thead>
-            <tbody>
-              {% for row in slots %}
-                <tr>
-                  <td>{{ row.slot }}</td>
-                  <td>{{ row.fou_p50_start|date:"Y-m-d H:i"|default:"—" }}</td>
-                  <td>{{ row.fou_p50_end|date:"Y-m-d H:i"|default:"—" }}</td>
-                  <td>{{ row.iac_p50_start|date:"Y-m-d H:i"|default:"—" }}</td>
-                  <td>{{ row.iac_p50_end|date:"Y-m-d H:i"|default:"—" }}</td>
-                  <td>{{ row.wtg_p50_start|date:"Y-m-d H:i"|default:"—" }}</td>
-                  <td>{{ row.wtg_p50_end|date:"Y-m-d H:i"|default:"—" }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table></div>
-        {% endif %}
+          </table>
+        </div>
+        {% include "partials/pagination.html" %}
       {% endif %}
     {% endif %}
   </div>

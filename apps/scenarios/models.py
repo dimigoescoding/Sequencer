@@ -43,16 +43,14 @@ class VesselSettings(models.Model):
         Scenario, on_delete=models.CASCADE, related_name="vessel_settings"
     )
     max_foundations_per_trip = models.PositiveIntegerField(default=4)
-    wtg_per_trip = models.PositiveIntegerField(default=4)
     allow_partial_final_trip = models.BooleanField(default=True)
     base_maximum_trip_payload_t = models.DecimalField(
         max_digits=14, decimal_places=3, null=True, blank=True
     )
-    solver_time_limit_seconds = models.PositiveIntegerField(default=20)
+    solver_time_limit_seconds = models.PositiveIntegerField(default=60)
     transit_speed_knots = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     harbour_easting_m = models.DecimalField(max_digits=16, decimal_places=3, null=True, blank=True)
     harbour_northing_m = models.DecimalField(max_digits=16, decimal_places=3, null=True, blank=True)
-    workbook_values = models.JSONField(default=dict, blank=True)
 
     class Meta:
         indexes = [models.Index(fields=["scenario"])]
@@ -62,16 +60,8 @@ class VesselSettings(models.Model):
                 name="vessel_capacity_at_least_one",
             ),
             models.CheckConstraint(
-                condition=models.Q(wtg_per_trip__gte=1),
-                name="wtg_per_trip_at_least_one",
-            ),
-            models.CheckConstraint(
                 condition=models.Q(solver_time_limit_seconds__gte=1),
                 name="solver_time_limit_at_least_one",
-            ),
-            models.CheckConstraint(
-                condition=models.Q(solver_time_limit_seconds__lte=600),
-                name="solver_time_limit_at_most_600",
             ),
         ]
 

@@ -4,14 +4,9 @@ from django.conf import settings
 from apps.ui import apply_bootstrap
 
 
-def _upload_limit_label() -> str:
-    megabytes = max(1, settings.EXCEL_MAX_UPLOAD_BYTES // (1024 * 1024))
-    return f"{megabytes} MB"
-
-
 class UploadForm(forms.Form):
     workbook = forms.FileField(
-        help_text=f"Excel .xlsx only, up to {_upload_limit_label()}. Formulas and macros are rejected.",
+        help_text="Excel .xlsx only, up to 10 MB. Formulas and macros are rejected.",
     )
 
     def __init__(self, *args, **kwargs) -> None:
@@ -25,5 +20,5 @@ class UploadForm(forms.Form):
                 "Upload an .xlsx workbook. Macro-enabled files are not accepted."
             )
         if upload.size > settings.EXCEL_MAX_UPLOAD_BYTES:
-            raise forms.ValidationError(f"The file exceeds the {_upload_limit_label()} limit.")
+            raise forms.ValidationError("The file exceeds the 10 MB limit.")
         return upload

@@ -13,14 +13,15 @@ Sequencer stores the constraints you enter. It does not suggest a methodology, f
 
 1. Open Foundation Data.
 2. Download the template if you need the column headings.
-3. Upload an `.xlsx` workbook with `FOU data`, `IAC data`, `WTG data`, and `Programme` sheets. Any other sheet is ignored. Constraints and settings are not read from the file.
-4. The page confirms that the upload is stored and lists the FOU, IAC, WTG, and programme counts. The new version is kept even when it has errors, together with the original file. Versions are not edited in place. Upload a corrected workbook to create the next version.
+3. Upload an `.xlsx` workbook. The sheet must be named `Foundation_Input`.
+4. The new version is stored even when it has errors, together with the original file. Versions are not edited in place. Upload a corrected workbook to create the next version.
 5. Read the error and warning lists. Activate a version only when it has no critical errors.
-6. Open the FOU, IAC, WTG, and Programme tabs. Each table scrolls vertically through its rows.
 
-Critical errors include a missing sheet or mandatory column, a missing or duplicate id, an invalid Include value, a non-positive weight on an included FOU row, or a coordinate that is not a number. A formula with no value stored in the file is an error. Sequencer does not calculate formulas. A value already stored by Excel is read and reported as a warning. An excluded FOU row, such as an OSS, may leave weight, spider, shallow, and jacking blank.
+Critical errors include a missing sheet or mandatory column, a missing or duplicate `Foundation_ID`, an invalid Yes/No value, a non-positive weight, a non-integer sequence value, and an earliest sequence after the latest sequence. Formulas are errors. The application does not calculate them.
 
-Warnings do not block optimisation. A cable end that is not a FOU or WTG id is a warning. The cable is kept and no location is invented.
+Warnings include missing coordinates, difficulty, delivery batch, or notes. Warnings do not block optimisation. They do disable constraint types that need the missing data. The constraint chooser states the reason.
+
+`Fixed_Trip`, `Fixed_Position`, `Earliest_Sequence`, and `Latest_Sequence` in the workbook are data columns. Add a constraint if you want the solver to enforce them. A fixed position above the scenario's foundations-per-trip limit is reported when you generate a sequence.
 
 ## Correcting validation errors
 
@@ -35,28 +36,36 @@ A project can hold several scenarios on the same dataset. Example names such as 
 3. Rename, duplicate, or delete a scenario from its page. Duplicating copies vessel settings and constraints so you can change one copy without changing the other.
 4. Previous runs stay on the scenario until you delete the scenario.
 
-## Settings
+## Vessel settings
 
-FOU per trip applies only to foundations. WTG per trip applies only to turbines. IAC has no trip limit. Both capacities accept 1 to 20. The number of trips for a package is its included count divided by that capacity, rounded up. The final trip may be shorter.
+Each scenario has its own settings.
 
-Solver time is on the same settings page. Choose 1 to 600 seconds. The stored default is 20. One limit covers the whole programme. The generate page waits until the run finishes. A run that stops at that limit is feasible unless OR-Tools proves it optimal.
+- Maximum foundations per trip defaults to 4.
+- The final trip may be partial. Turn that off only when every trip, including the last, must be full.
+- Solver time limit defaults to 60 seconds. The allowed range is 1–120.
+- Payload, transit speed, and harbour coordinates stay empty until you enter them. Empty does not mean zero, and it does not enable payload or harbour-leg checks.
 
-Changing the dataset does not replace these values or the constraints you added.
+The number of trips is the included foundation count divided by the maximum per trip, rounded up.
 
-## Constraints
+## Adding constraints
 
-Open the scenario, then Constraints. The Package column is a dropdown: FOU, IAC, or WTG. The rule is applied only to that package. Full sequence versus within trip stays a separate choice on ordering rules. Edit a row to change the package, hard or soft, and the severity. Activate or deactivate a row, or delete it. Add constraint offers the supported rule list. The explanation is shown as text. Sequencer does not read it as a new rule.
+Open the scenario, then Constraints, then Add constraint. Pick a type. Types that need missing columns are listed with an explanation and cannot be saved.
 
-A soft severity is a number from 1 to 100. Changing a row to hard clears its severity.
+The form is a structured builder:
 
-Rules you can add include:
+- Choose enforcement: hard (must be satisfied) or soft (preference).
+- For a soft constraint, set severity from 1 to 100. A higher severity pulls harder against other soft constraints of the same kind. It does not override a hard constraint.
+- For attribute rules, choose the column, an operator, and the comparison value. You cannot type a formula.
 
-- Spider locations are installed first, in any order among themselves.
-- At most one shallow location is placed on a trip.
-- Infield sailing minimises the straight-line distance from each foundation to the next across the full sequence. The total includes the sail inside a trip and the sail from the end of one trip to the start of the next. Harbour transit is not included. On a larger set, the search re-solves stretches of the sequence that cross trip boundaries. The validation table shows the within-trip distance, the trip-to-trip distance, and the total in nautical miles.
-- Jacking difficulty, when active, prefers to keep difficult locations out of the first three trips.
+Examples of what the builder can express:
 
-Earliest trip is a constraint you can add. It applies to one location, or to every location matching an attribute. The number is the first trip those locations may be installed. Enter 2 to keep them out of the first trip. For a Yes/No column such as Shallow location, use equals and YES.
+- If `Punch_Through` equals Yes, allowed positions are 3 and 4, enforced as hard.
+- If `Difficulty_Value` is greater than 75, prefer later in the sequence, enforced as soft with a severity you choose.
+- If `Delivery_Batch` equals a batch you name, the matching foundations are allowed only from a trip you name, enforced as hard through an earliest-sequence rule.
+
+Actions on a saved constraint: edit, duplicate, activate, deactivate, delete, and move up or down. Deleting asks for confirmation. Display order is for reading the list. It does not change hard feasibility.
+
+A soft payload limit shows a warning because the result may exceed the limit. The excess is reported as a trade-off.
 
 ## Hard versus soft constraints
 
@@ -68,7 +77,7 @@ Soft constraints add a penalty. The result can violate them. The validation tab 
 
 Open Generate Sequence. Direct conflicts are listed first, for example one foundation fixed to two trips, a position above vessel capacity, a hard group that is also a hard separation, or a fixed group that already exceeds a hard payload limit. The solver does not start until those messages are clear.
 
-Submit the form to run OR-Tools once for the whole programme. FOU, IAC, and WTG are activities in that one model. A cable is the activity that joins its two location ids. Package settings and constraints choose which activities they bind. Sequencer does not insert a buffer or force FOU, then IAC, then WTG. Programme P50 dates are stored per slot. The Visual tab plays FOU and WTG on one calendar from those dates. They are not turned into solver windows unless you add a constraint. A loading bar stays on the page until the solver finishes. If the model is infeasible, no partial sequence is stored. If any hard check fails, the whole run is invalid. Status values:
+Submit the form to run OR-Tools. Status values:
 
 - `OPTIMAL` — proven best scaled objective.
 - `FEASIBLE` — a valid sequence was found before the time limit. It is not claimed to be optimal.
@@ -82,9 +91,7 @@ The run summary shows the project, scenario, dataset version, time, solver statu
 
 Installation Sequence lists order, trip, vessel position, weight, delivery deviation, and the constraints that governed each foundation. Search by foundation ID, sort columns, and page through long results.
 
-Trip Summary lists count, order, payload, punch-through count, difficulty, and checks. Route distance appears when coordinates exist and a distance constraint is active. The unit is nautical miles. One nautical mile is 1,852 metres.
-
-Visual plots FOU and WTG on equal-scale easting and northing axes. One playhead moves through calendar time. Sequence position 1 of a package uses programme slot 1 of that package, position 2 uses slot 2, and so on. A location is highlighted from its P50 start until its P50 end, then it stays on the map. FOU is a circle and WTG is a square. Each package keeps its own trip colours and its own within-trip line. Completed trips fade. Harbour transit and the join from one trip to the next are not drawn. The caption shows that within-trip distance in nautical miles. IAC is not drawn yet. If a sequenced location has no easting or northing, the plot stays blank and those ids are named. If the programme dates do not cover every sequenced FOU and WTG location, or there are no dates, the plot stays blank and says so. A run with no stored sequence has nothing to plot.
+Trip Summary lists count, order, payload, punch-through count, difficulty, and checks. Route distance appears when coordinates exist and a distance constraint is active. The unit is metres.
 
 Validation lists each check with target, actual result, status, affected foundations, and an explanation. Badges are Passed, Failed, Warning, Information, and Soft trade-off. The run passes only when every hard check passes.
 

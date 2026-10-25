@@ -6,30 +6,6 @@ document.addEventListener("submit", (event) => {
 });
 
 document.addEventListener("DOMContentLoaded", () => {
-  const generateForm = document.getElementById("generate-form");
-  if (generateForm) {
-    generateForm.addEventListener("submit", (event) => {
-      if (generateForm.dataset.running === "1") {
-        event.preventDefault();
-        return;
-      }
-      event.preventDefault();
-      generateForm.dataset.running = "1";
-      const progress = document.getElementById("generate-progress");
-      const button = document.getElementById("generate-button");
-      if (progress) {
-        progress.hidden = false;
-      }
-      if (button) {
-        button.disabled = true;
-      }
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          generateForm.submit();
-        });
-      });
-    });
-  }
   const enforcement = document.querySelector("[name=enforcement]");
   const severity = document.getElementById("severity-field");
   const payloadWarning = document.getElementById("payload-soft-warning");

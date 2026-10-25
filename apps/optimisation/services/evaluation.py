@@ -29,7 +29,7 @@ from apps.optimisation.services.metrics import (
     window_pair_count,
     window_violation,
 )
-from apps.optimisation.services.routing import format_nautical_miles, metres_between
+from apps.optimisation.services.routing import harbour_coordinates, metres_between, metres_xy
 from apps.optimisation.services.scaling import scaled_penalty, weight_kg
 from apps.optimisation.services.solver import _bound_targets, _sequence_bound_value
 from apps.optimisation.services.types import (
@@ -350,10 +350,6 @@ def _check_constraint(
         return _difficulty(constraint, included, placements, vessel, add, governing, penalties)
     if kind == "minimise_within_trip_distance":
         return _distance(constraint, placements, vessel, add, governing)
-    if kind == "matching_installed_first":
-        return _installed_first(constraint, placements, add, governing, penalties)
-    if kind == "avoid_matching_in_first_trips":
-        return _avoid_first_trips(constraint, placements, vessel, add, governing, penalties)
     add(
         constraint.constraint_type,
         constraint.name,
@@ -568,26 +564,16 @@ def _window(constraint, included, placements, vessel, add, governing, penalties)
         if not earliest and sequence > bound:
             bad.append(foundation.foundation_id)
             raw += sequence - bound
-    earliest_trip = constraint.parameters.get("earliest_trip")
-    if earliest and earliest_trip not in (None, ""):
-        label = "Earliest trip"
-        target = f"trip >= {int(earliest_trip)}"
-        hard_note = "Matching locations are not installed before this trip."
-        soft_note = "A soft window penalises installation before the preferred trip."
-    else:
-        label = "Earliest sequence" if earliest else "Latest sequence"
-        target = f"{'>=' if earliest else '<='} {bound}"
-        hard_note = "The sequence window is checked against the installation sequence."
-        soft_note = "A soft window penalises positions outside the preferred bound."
+    label = "Earliest sequence" if earliest else "Latest sequence"
     if constraint.enforcement == "hard":
         add(
             label,
             constraint.name,
-            target,
+            f"{'>=' if earliest else '<='} {bound}",
             "Violations: " + ", ".join(bad) if bad else "Respected",
             "Failed" if bad else "Passed",
             bad,
-            hard_note,
+            "The sequence window is checked against the installation sequence.",
         )
         return 0, set(bad), set(), set(), set()
     max_raw = max(vessel.max_foundations_per_trip, bound) * max(len(matched), 1)
@@ -597,11 +583,11 @@ def _window(constraint, included, placements, vessel, add, governing, penalties)
     add(
         f"Soft {label.lower()}",
         constraint.name,
-        target,
+        f"{'>=' if earliest else '<='} {bound}",
         f"shortfall={raw}; penalty={penalty}",
         "Soft trade-off" if penalty else "Passed",
         bad,
-        soft_note,
+        "A soft window penalises positions outside the preferred bound.",
     )
     return penalty, set(), set(), set(), set()
 
@@ -929,151 +915,73 @@ def _delivery(constraint, included, placements, add, governing, penalties):
     return penalty, set(), set(), set(), set()
 
 
-def _installed_first(constraint, placements, add, governing, penalties):
-    matched = matching_foundations([item.foundation for item in placements], constraint.parameters)
-    matched_ids = {item.foundation_id for item in matched}
-    _mark(governing, sorted(matched_ids), constraint.name)
-    count = len(matched_ids)
-    late = [
-        item
-        for item in placements
-        if item.foundation.foundation_id in matched_ids and item.sequence > count
-    ]
-    affected = [item.foundation.foundation_id for item in late]
-    if count == 0:
-        add(
-            "Matching locations first",
-            constraint.name,
-            "No matching locations",
-            "Nothing to place first",
-            "Passed",
-            [],
-            "The rule does not change the sequence when no location matches.",
-        )
-        return _empty()
-    if constraint.enforcement == "hard":
-        add(
-            "Matching locations first",
-            constraint.name,
-            f"Matching locations in positions 1 to {count}, in any order",
-            "Respected" if not late else "Late: " + ", ".join(affected),
-            "Passed" if not late else "Failed",
-            affected,
-            "Matching locations fill the first positions. Their order inside that block is free.",
-        )
-        return 0, set(affected), set(), set(), set()
-    raw = sum(item.sequence - count for item in late)
-    max_raw = max(count * len(placements), 1)
-    penalty = scaled_penalty(raw, max_raw, constraint.severity or 0) if raw else 0
-    for foundation_id in affected:
-        penalties[foundation_id] += penalty
-    add(
-        "Soft matching locations first",
-        constraint.name,
-        f"Prefer matches in positions 1 to {count}",
-        f"late={len(late)}; penalty={penalty}",
-        "Soft trade-off" if penalty else "Passed",
-        affected,
-        "A matching location after the first block produces a soft penalty.",
-    )
-    return penalty, set(), set(), set(), set()
-
-
-def _avoid_first_trips(constraint, placements, vessel, add, governing, penalties):
-    matched = matching_foundations([item.foundation for item in placements], constraint.parameters)
-    matched_ids = {item.foundation_id for item in matched}
-    _mark(governing, sorted(matched_ids), constraint.name)
-    trip_count = int(constraint.parameters["trip_count"])
-    earliest = trip_count * vessel.max_foundations_per_trip + 1
-    early = [
-        item
-        for item in placements
-        if item.foundation.foundation_id in matched_ids and item.sequence < earliest
-    ]
-    affected = [item.foundation.foundation_id for item in early]
-    target = f"Matching locations at sequence {earliest} or later (after trip {trip_count})"
-    if constraint.enforcement == "hard":
-        add(
-            "Avoid matches in the first trips",
-            constraint.name,
-            target,
-            "Respected" if not early else "Early: " + ", ".join(affected),
-            "Passed" if not early else "Failed",
-            affected,
-            "Matching locations are not installed during the opening trips.",
-        )
-        return 0, set(affected), set(), set(), set()
-    raw = sum(earliest - item.sequence for item in early)
-    max_raw = max((earliest - 1) * max(len(matched_ids), 1), 1)
-    penalty = scaled_penalty(raw, max_raw, constraint.severity or 0) if raw else 0
-    for foundation_id in affected:
-        penalties[foundation_id] += penalty
-    add(
-        "Soft avoid matches in the first trips",
-        constraint.name,
-        target,
-        f"early={len(early)}; penalty={penalty}",
-        "Soft trade-off" if penalty else "Passed",
-        affected,
-        "A matching location in the opening trips produces a soft penalty. It is not a hard failure.",
-    )
-    return penalty, set(), set(), set(), set()
-
-
 def _distance(constraint, placements, vessel, add, governing):
     _mark(governing, [item.foundation.foundation_id for item in placements], constraint.name)
     distance = _route_distance(placements, constraint, vessel)
-    ordered = sorted(placements, key=lambda item: item.sequence)
-    sailing = sum(
-        metres_between(left.foundation, right.foundation)
-        for left, right in zip(ordered, ordered[1:], strict=False)
+    if constraint.enforcement == "hard":
+        add(
+            "Within-trip distance",
+            constraint.name,
+            "Minimise Euclidean metres",
+            f"{distance} m",
+            "Information",
+            [],
+            "Hard distance minimisation has no numeric limit, so a positive distance is not a violation. "
+            "It is optimised ahead of soft preferences and is not relaxed into the soft penalty band.",
+        )
+        return _empty()
+    max_leg = 0
+    for left in placements:
+        for right in placements:
+            max_leg = max(max_leg, metres_between(left.foundation, right.foundation))
+    legs = sum(
+        1
+        for trip in {item.trip for item in placements}
+        for _index in range(max(0, sum(1 for item in placements if item.trip == trip) - 1))
+    )
+    harbour = harbour_coordinates(constraint.parameters, vessel)
+    harbour_extra = 2 * len({item.trip for item in placements}) if harbour else 0
+    max_raw = max_leg * max(legs, 1) + (max_leg * harbour_extra)
+    penalty = (
+        scaled_penalty(distance, max(max_raw, 1), constraint.severity or 0)
+        if distance and max_raw
+        else 0
     )
     add(
-        "Total sailing distance",
+        "Soft within-trip distance",
         constraint.name,
-        "Sum of every consecutive foundation-to-foundation leg",
-        format_nautical_miles(sailing),
-        "Information",
+        "Minimise Euclidean metres",
+        f"{distance} m; penalty={penalty}",
+        "Soft trade-off" if penalty else "Passed",
         [],
-        "This is the solver objective. It includes the sail inside each trip and the sail "
-        "from the end of one trip to the start of the next. Harbour transit is not included. "
-        "There is no maximum distance, so the nautical miles are information and are not a "
-        "pass or fail limit.",
+        "A positive route length is reported as a soft trade-off. It does not fail hard validation.",
     )
-    add(
-        "Within-trip distance",
-        constraint.name,
-        "Sailing that stays inside trips",
-        format_nautical_miles(distance),
-        "Information",
-        [],
-        "This is the part of the sailing total that stays inside trips.",
-    )
-    add(
-        "Trip-to-trip distance",
-        constraint.name,
-        "Sail from the end of one trip to the start of the next",
-        format_nautical_miles(sailing - distance),
-        "Information",
-        [],
-        "These are the joins between trips. Total sailing distance equals the within-trip "
-        "distance plus this trip-to-trip distance. Harbour transit is not included.",
-    )
-    return _empty()
+    return penalty, set(), set(), set(), set()
 
 
 def _route_distance(
     placements: list[_Placement], constraint: ConstraintInput, vessel: VesselConfig
 ) -> int:
-    del constraint, vessel
     total = 0
     grouped: dict[int, list[_Placement]] = defaultdict(list)
     for placement in placements:
         grouped[placement.trip].append(placement)
+    harbour = harbour_coordinates(constraint.parameters, vessel)
     for group in grouped.values():
         ordered = sorted(group, key=lambda item: item.position)
         for left, right in zip(ordered, ordered[1:], strict=False):
             total += metres_between(left.foundation, right.foundation)
+        if harbour is not None and ordered:
+            easting, northing = harbour
+            total += metres_xy(
+                ordered[0].foundation.easting_m, ordered[0].foundation.northing_m, easting, northing
+            )
+            total += metres_xy(
+                ordered[-1].foundation.easting_m,
+                ordered[-1].foundation.northing_m,
+                easting,
+                northing,
+            )
     return total
 
 
@@ -1208,29 +1116,3 @@ def _trip_rows(
             )
         )
     return rows
-
-
-def merge_evaluations(parts: list[tuple[str, Evaluation]]) -> Evaluation:
-    """Combine package checks. Any hard failure makes the whole programme fail."""
-    merged = Evaluation(validation_status="Passed")
-    display_order = 0
-    for package, evaluation in parts:
-        for row in evaluation.sequence_rows:
-            row.package = package
-            merged.sequence_rows.append(row)
-        for row in evaluation.trip_rows:
-            row.package = package
-            merged.trip_rows.append(row)
-        for row in evaluation.validation_rows:
-            display_order += 1
-            row.check_name = f"{package}: {row.check_name}"
-            row.display_order = display_order
-            merged.validation_rows.append(row)
-        merged.soft_tradeoff_count += evaluation.soft_tradeoff_count
-        merged.hard_failures += evaluation.hard_failures
-        merged.objective_penalty += evaluation.objective_penalty
-        if evaluation.validation_status != "Passed":
-            merged.validation_status = "Failed"
-    if not parts:
-        merged.validation_status = "Failed"
-    return merged

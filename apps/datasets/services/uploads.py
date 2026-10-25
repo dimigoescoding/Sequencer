@@ -9,14 +9,7 @@ from pathlib import Path
 from django.core.files.base import ContentFile
 from django.db import transaction
 
-from apps.datasets.models import (
-    Cable,
-    DatasetIssue,
-    DatasetVersion,
-    Foundation,
-    ProgrammeSlot,
-    WtgLocation,
-)
+from apps.datasets.models import DatasetIssue, DatasetVersion, Foundation
 from apps.datasets.services.parsing import UploadRejected, parse_workbook
 from apps.projects.models import Project
 
@@ -45,12 +38,8 @@ def create_dataset_version(
             version_number=version_number,
             original_filename=Path(filename).name[:255],
             content_sha256=hashlib.sha256(content).hexdigest(),
-            row_count=len(parsed.foundations) + len(parsed.cables) + len(parsed.wtg_rows),
-            included_count=(
-                sum(1 for item in parsed.foundations if item.include)
-                + sum(1 for item in parsed.cables if item.include)
-                + sum(1 for item in parsed.wtg_rows if item.include)
-            ),
+            row_count=len(parsed.foundations),
+            included_count=sum(1 for item in parsed.foundations if item.include),
             error_count=parsed.error_count,
             warning_count=parsed.warning_count,
             columns_json=parsed.columns,
@@ -79,7 +68,6 @@ def create_dataset_version(
                     earliest_sequence=item.earliest_sequence,
                     latest_sequence=item.latest_sequence,
                     notes=item.notes,
-                    attributes=item.attributes,
                 )
                 for item, source_row in zip(
                     parsed.foundations,
@@ -99,56 +87,6 @@ def create_dataset_version(
                     column_name=issue.column_name,
                 )
                 for issue in parsed.issues
-            ]
-        )
-        Cable.objects.bulk_create(
-            [
-                Cable(
-                    dataset_version=version,
-                    source_row=item.source_row,
-                    cable_id=item.cable_id,
-                    nickname=item.nickname,
-                    include=item.include,
-                    string_id=item.string_id,
-                    loop_id=item.loop_id,
-                    start_location_id=item.start_location_id,
-                    end_location_id=item.end_location_id,
-                    spider_cable=item.spider_cable,
-                )
-                for item in parsed.cables
-            ]
-        )
-        WtgLocation.objects.bulk_create(
-            [
-                WtgLocation(
-                    dataset_version=version,
-                    source_row=item.source_row,
-                    wtg_id=item.wtg_id,
-                    include=item.include,
-                    structure=item.structure,
-                    easting_m=item.easting_m,
-                    northing_m=item.northing_m,
-                    spider_location=item.spider_location,
-                    string_label=item.string_label,
-                    jacking_difficulty=item.jacking_difficulty,
-                )
-                for item in parsed.wtg_rows
-            ]
-        )
-        ProgrammeSlot.objects.bulk_create(
-            [
-                ProgrammeSlot(
-                    dataset_version=version,
-                    source_row=item.source_row,
-                    slot=item.slot,
-                    fou_p50_start=item.fou_p50_start,
-                    fou_p50_end=item.fou_p50_end,
-                    iac_p50_start=item.iac_p50_start,
-                    iac_p50_end=item.iac_p50_end,
-                    wtg_p50_start=item.wtg_p50_start,
-                    wtg_p50_end=item.wtg_p50_end,
-                )
-                for item in parsed.programme
             ]
         )
     return version

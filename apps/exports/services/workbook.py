@@ -12,7 +12,6 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
 from apps.optimisation.models import OptimisationRun
-from apps.optimisation.services.routing import nautical_miles
 
 HEADER_FILL = PatternFill("solid", fgColor="0F2C4C")
 HEADER_FONT = Font(color="FFFFFF", bold=True)
@@ -28,7 +27,6 @@ THIN = Border(
 
 SEQUENCE_COLUMNS = [
     "Installation_Sequence",
-    "Package",
     "Trip",
     "Vessel_Position",
     "Foundation_ID",
@@ -67,7 +65,6 @@ def build_run_workbook(run: OptimisationRun) -> bytes:
         workbook.create_sheet("Trip_Summary"),
         run,
         [
-            "Package",
             "Trip",
             "Foundation_Count",
             "Foundations_In_Order",
@@ -77,7 +74,7 @@ def build_run_workbook(run: OptimisationRun) -> bytes:
             "Punch_Through_Count",
             "Average_Difficulty",
             "Maximum_Difficulty",
-            "Route_Distance_nm",
+            "Route_Distance",
             "Payload_Check",
             "Position_Check",
             "Overall_Trip_Check",
@@ -285,7 +282,6 @@ def _write_summary(worksheet: Worksheet, run: OptimisationRun) -> None:
 def _sequence_values(row) -> list:
     return [
         row.installation_sequence,
-        row.package,
         row.trip,
         row.vessel_position,
         row.foundation_id,
@@ -309,7 +305,6 @@ def _sequence_values(row) -> list:
 
 def _trip_values(row) -> list:
     return [
-        row.package,
         row.trip,
         row.foundation_count,
         row.foundations_in_order,
@@ -319,7 +314,7 @@ def _trip_values(row) -> list:
         row.punch_through_count,
         row.average_difficulty,
         row.maximum_difficulty,
-        None if row.route_distance is None else nautical_miles(row.route_distance),
+        row.route_distance,
         row.payload_check,
         row.position_check,
         row.overall_trip_check,
@@ -369,8 +364,8 @@ def _apply_number_format(cell, header: str, value) -> None:
         "Length_m",
     }:
         cell.number_format = "0.000"
-    elif header == "Route_Distance_nm":
-        cell.number_format = "0.000"
+    elif header == "Route_Distance":
+        cell.number_format = "0.0"
     elif isinstance(value, float):
         cell.number_format = "0.000"
 

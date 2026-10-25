@@ -1,8 +1,4 @@
-"""Euclidean distances in metres. No map geometry is produced.
-
-The solver keeps integer metres. Screens and the Excel export show nautical miles.
-One nautical mile is 1,852 metres.
-"""
+"""Euclidean distances in metres. No map geometry is produced."""
 
 from __future__ import annotations
 
@@ -11,8 +7,6 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from apps.optimisation.services.types import FoundationInput, VesselConfig
-
-NAUTICAL_MILE_M = Decimal("1852")
 
 
 def metres_between(left: FoundationInput, right: FoundationInput) -> int:
@@ -29,14 +23,6 @@ def metres_xy(
         return 0
     distance = math.hypot(float(east_a) - float(east_b), float(north_a) - float(north_b))
     return int(Decimal(str(distance)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-
-
-def nautical_miles(metres: int | Decimal) -> Decimal:
-    return (Decimal(metres) / NAUTICAL_MILE_M).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
-
-
-def format_nautical_miles(metres: int | Decimal) -> str:
-    return f"{nautical_miles(metres)} nm"
 
 
 def harbour_coordinates(

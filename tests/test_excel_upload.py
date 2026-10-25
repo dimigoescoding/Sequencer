@@ -1,148 +1,120 @@
-"""Workbook upload and validation for the FOU, IAC, WTG, and Programme file."""
-
-from pathlib import Path
+"""Excel parsing and dataset-version rules."""
 
 import pytest
 from apps.datasets.services.parsing import UploadRejected, parse_workbook
-from apps.datasets.services.uploads import UploadRejected as StoredRejection
 from apps.datasets.services.uploads import activate_dataset, create_dataset_version
 from apps.projects.models import Project
 from django.contrib.auth import get_user_model
-from tests.support import information_workbook, location_row, with_vba
+from tests.support import valid_row, with_vba, workbook_bytes
 
 pytestmark = pytest.mark.django_db
 
-FIXTURE = Path(__file__).resolve().parent / "fixtures" / "sequencer_input_v2.xlsx"
-
-
-def test_supplied_workbook_loads_fou_iac_wtg_and_programme():
-    parsed = parse_workbook(FIXTURE.read_bytes())
-    assert parsed.error_count == 0
-    assert len(parsed.foundations) == 51
-    assert len(parsed.cables) == 55
-    assert len(parsed.wtg_rows) == 51
-    assert len(parsed.programme) == 55
-    included = [item for item in parsed.foundations if item.include]
-    spiders = [item for item in included if item.attributes.get("Spider location") is True]
-    shallows = [item for item in included if item.attributes.get("Shallow location") is True]
-    assert len(included) == 50
-    assert len(spiders) == 10
-    assert len(shallows) == 5
-    oss = next(item for item in parsed.foundations if item.foundation_id == "OSS")
-    assert oss.include is False
-    assert oss.weight_t is None
-    assert oss.attributes["Spider location"] is None
-    known = {item.foundation_id.casefold() for item in parsed.foundations}
-    known.update(item.wtg_id.casefold() for item in parsed.wtg_rows)
-    assert all(item.include for item in parsed.cables)
-    assert all(item.start_location_id.casefold() in known for item in parsed.cables)
-    assert all(item.end_location_id.casefold() in known for item in parsed.cables)
-    assert not any(issue.code == "unknown_endpoint" for issue in parsed.issues)
-    assert parsed.programme[0].slot == 1
-    assert parsed.programme[0].fou_p50_start is not None
-    assert parsed.programme[-1].slot == 55
-    assert parsed.programme[-1].fou_p50_start is None
-    assert parsed.programme[-1].iac_p50_start is not None
-
 
 def test_valid_workbook_parses_and_can_be_activated():
-    user = get_user_model().objects.create_user(username="uploader", password="local-pass-123")
+    content = workbook_bytes(
+        [valid_row("F01"), valid_row("F02", Include="No", Weight_t=80, Delivery_Sequence=2)]
+    )
+    parsed = parse_workbook(content)
+    assert parsed.error_count == 0
+    assert [item.foundation_id for item in parsed.foundations] == ["F01", "F02"]
+    assert parsed.foundations[1].include is False
+
+    user = get_user_model().objects.create_user(username="owner", password="local-pass-123")
     project = Project.objects.create(owner=user, name="Upload", package_type="Foundation")
     version = create_dataset_version(
-        project=project,
-        user=user,
-        filename="locations.xlsx",
-        content=information_workbook([location_row("A"), location_row("B", Location=2)]),
+        project=project, user=user, filename="foundations.xlsx", content=content
     )
     assert version.error_count == 0
-    assert version.row_count == 2
-    assert version.foundations.count() == 2
-    assert version.cables.count() == 0
-    assert version.constraint_rows.count() == 0
-    assert version.setting_rows.count() == 0
+    assert version.original_file.name.endswith(".xlsx")
     activate_dataset(version)
     version.refresh_from_db()
     assert version.is_active is True
 
 
 def test_missing_sheet_is_a_critical_error():
-    content = information_workbook([location_row("A")], omit="IAC data")
-    parsed = parse_workbook(content)
+    parsed = parse_workbook(workbook_bytes([valid_row()], sheet="Other"))
     assert parsed.error_count == 1
     assert parsed.issues[0].code == "missing_sheet"
+    assert parsed.foundations == []
+
+
+def test_missing_mandatory_columns_are_reported():
+    parsed = parse_workbook(workbook_bytes([{"Foundation_ID": "F01"}], headers=["Foundation_ID"]))
+    assert any(issue.code == "missing_columns" for issue in parsed.issues)
+    assert parsed.foundations == []
 
 
 def test_duplicate_foundation_id_is_an_error():
-    parsed = parse_workbook(
-        information_workbook([location_row("A"), location_row("A", Location=2)])
-    )
+    parsed = parse_workbook(workbook_bytes([valid_row("F01"), valid_row("F01")]))
     assert any(issue.code == "duplicate_foundation_id" for issue in parsed.issues)
 
 
 def test_invalid_boolean_is_an_error():
-    parsed = parse_workbook(
-        information_workbook([location_row("A", **{"Spider location": "maybe"})])
+    parsed = parse_workbook(workbook_bytes([valid_row(Include="maybe")]))
+    assert any(
+        issue.code == "invalid_boolean" and issue.column_name == "Include"
+        for issue in parsed.issues
     )
-    assert any(issue.code == "invalid_boolean" for issue in parsed.issues)
 
 
 def test_invalid_weight_is_an_error():
-    parsed = parse_workbook(information_workbook([location_row("A", **{"Aver. Weight[t]": 0})]))
+    parsed = parse_workbook(workbook_bytes([valid_row(Weight_t=0)]))
     assert any(issue.code == "invalid_weight" for issue in parsed.issues)
+    negative = parse_workbook(workbook_bytes([valid_row(Weight_t=-5)]))
+    assert any(issue.code == "invalid_weight" for issue in negative.issues)
+
+
+def test_earliest_greater_than_latest_is_an_error():
+    content = workbook_bytes(
+        [valid_row(Earliest_Sequence=8, Latest_Sequence=3)],
+        headers=[*workbook_headers_with_window()],
+    )
+    parsed = parse_workbook(content)
+    assert any(issue.code == "earliest_after_latest" for issue in parsed.issues)
 
 
 def test_invalid_dataset_cannot_be_activated():
-    user = get_user_model().objects.create_user(username="blocked", password="local-pass-123")
-    project = Project.objects.create(owner=user, name="Blocked", package_type="Foundation")
+    user = get_user_model().objects.create_user(username="owner2", password="local-pass-123")
+    project = Project.objects.create(owner=user, name="Broken", package_type="Foundation")
     version = create_dataset_version(
         project=project,
         user=user,
-        filename="bad.xlsx",
-        content=information_workbook([location_row("A", **{"Aver. Weight[t]": "heavy"})]),
+        filename="../odd name.xlsx",
+        content=workbook_bytes([valid_row(Weight_t="heavy")]),
     )
     assert version.error_count > 0
+    stored_name = version.original_file.name
+    assert ".." not in stored_name
+    assert stored_name.endswith(".xlsx")
+    assert "odd_name" in stored_name
     with pytest.raises(ValueError):
         activate_dataset(version)
 
 
 def test_macro_workbook_is_rejected_without_execution():
-    content = with_vba(information_workbook([location_row("A")]))
-    with pytest.raises(UploadRejected):
+    content = with_vba(workbook_bytes([valid_row()]))
+    with pytest.raises(UploadRejected, match="Macro-enabled"):
         parse_workbook(content)
-    with pytest.raises(StoredRejection):
-        user = get_user_model().objects.create_user(username="macro", password="local-pass-123")
-        project = Project.objects.create(owner=user, name="Macro", package_type="Foundation")
-        create_dataset_version(project=project, user=user, filename="macro.xlsx", content=content)
 
 
-def test_formula_without_a_stored_value_is_not_calculated():
+def test_formula_cells_are_not_evaluated():
     from io import BytesIO
 
-    from openpyxl import load_workbook
+    from openpyxl import Workbook
 
-    content = information_workbook([location_row("A")])
-    workbook = load_workbook(BytesIO(content))
-    fou = workbook["FOU data"]
-    easting = next(
-        cell.column for cell in fou[1] if str(cell.value).casefold().startswith("easting")
-    )
-    fou.cell(2, easting, "=1+1")
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Foundation_Input"
+    worksheet.append(["Foundation_ID", "Include", "Weight_t", "Delivery_Sequence"])
+    worksheet.append(["F01", "Yes", "=100+5", 1])
     buffer = BytesIO()
     workbook.save(buffer)
     parsed = parse_workbook(buffer.getvalue())
     assert any(issue.code == "formula" for issue in parsed.issues)
-    assert parsed.foundations == [] or parsed.foundations[0].easting_m is None
+    assert parsed.foundations == [] or parsed.foundations[0].weight_t is None
 
 
-def test_excluded_row_may_omit_weight_and_unknown_cable_ends_warn():
-    parsed = parse_workbook(
-        information_workbook(
-            [location_row("OSS", Include="NO", **{"Aver. Weight[t]": None})],
-            iac_rows=[["C1", "nick", "YES", "A", "AB", "OSS", "MISSING", "NO"]],
-            extra_sheet="Notes",
-        )
-    )
-    assert parsed.error_count == 0
-    assert parsed.foundations[0].include is False
-    assert parsed.foundations[0].weight_t is None
-    assert any(issue.code == "unknown_endpoint" for issue in parsed.issues)
+def workbook_headers_with_window() -> list[str]:
+    from tests.support import HEADERS
+
+    return [*HEADERS, "Earliest_Sequence", "Latest_Sequence"]

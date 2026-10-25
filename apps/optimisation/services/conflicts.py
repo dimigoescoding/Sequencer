@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
@@ -33,50 +33,6 @@ class _Bounds:
     latest: int | None = None
     allowed: set[int] | None = None
     excluded: set[int] = field(default_factory=set)
-
-
-def find_programme_conflicts(
-    foundations: list[FoundationInput],
-    cables: list[FoundationInput],
-    turbines: list[FoundationInput],
-    vessel: VesselConfig,
-    constraints: list[ConstraintInput],
-    columns_present: set[str],
-) -> list[str]:
-    """Check each package with its own trip limit. An empty package is skipped."""
-
-    def package_of(constraint: ConstraintInput) -> str:
-        package = str(getattr(constraint, "package", "") or "FOU").strip().upper()
-        return package if package in {"FOU", "IAC", "WTG"} else "FOU"
-
-    iac_count = sum(1 for item in cables if item.include)
-    groups = [
-        ("FOU", foundations, vessel, "FOU"),
-        (
-            "IAC",
-            cables,
-            replace(vessel, max_foundations_per_trip=max(iac_count, 1)),
-            "IAC",
-        ),
-        (
-            "WTG",
-            turbines,
-            replace(vessel, max_foundations_per_trip=max(vessel.wtg_per_trip, 1)),
-            "WTG",
-        ),
-    ]
-    messages: list[str] = []
-    any_included = False
-    for label, items, package_vessel, package in groups:
-        if not any(item.include for item in items):
-            continue
-        any_included = True
-        package_constraints = [item for item in constraints if package_of(item) == package]
-        for message in find_conflicts(items, package_vessel, package_constraints, columns_present):
-            messages.append(f"{label}: {message}")
-    if not any_included:
-        messages.append("No included FOU, IAC, or WTG activities are available to sequence.")
-    return _unique(messages)
 
 
 def find_conflicts(
@@ -149,8 +105,8 @@ def find_conflicts(
             and count > MAX_DISTANCE_FOUNDATIONS
         ):
             conflicts.append(
-                f"{constraint.name} minimises total sailing distance in the solver. "
-                f"MVP 1 does this for up to {MAX_DISTANCE_FOUNDATIONS} included foundations."
+                f"{constraint.name} depends on within-trip distance. MVP 1 models that inside "
+                f"CP-SAT for up to {MAX_DISTANCE_FOUNDATIONS} included foundations."
             )
             continue
         if constraint.enforcement != "hard":
