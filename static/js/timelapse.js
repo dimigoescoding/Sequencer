@@ -16,7 +16,7 @@
   var playing = true;
   var timer = null;
   var delay = 400;
-  var pace = 7 * DAY;
+  var pace = DAY;
   var sliderMax = 1000;
   var layout = project(data);
 
@@ -28,10 +28,20 @@
   }
 
   function project(points) {
-    var minX = Math.min.apply(null, points.map(function (p) { return p.x; }));
-    var maxX = Math.max.apply(null, points.map(function (p) { return p.x; }));
-    var minY = Math.min.apply(null, points.map(function (p) { return p.y; }));
-    var maxY = Math.max.apply(null, points.map(function (p) { return p.y; }));
+    var xs = [];
+    var ys = [];
+    points.forEach(function (point) {
+      xs.push(point.x);
+      ys.push(point.y);
+      if (point.x2 != null && point.y2 != null) {
+        xs.push(point.x2);
+        ys.push(point.y2);
+      }
+    });
+    var minX = Math.min.apply(null, xs);
+    var maxX = Math.max.apply(null, xs);
+    var minY = Math.min.apply(null, ys);
+    var maxY = Math.max.apply(null, ys);
     if (minX === maxX) { minX -= 1; maxX += 1; }
     if (minY === maxY) { minY -= 1; maxY += 1; }
     var plotW = 1360;
@@ -134,9 +144,25 @@
     }
   }
 
+  function drawCables() {
+    data.forEach(function (point) {
+      if (point.package !== "IAC" || point.x2 == null || point.y2 == null) return;
+      var finished = time >= point.end;
+      svg.appendChild(el("line", {
+        x1: layout.X(point.x), y1: layout.Y(point.y),
+        x2: layout.X(point.x2), y2: layout.Y(point.y2),
+        class: "route",
+        stroke: finished ? dormant : packageColor.IAC,
+        "stroke-width": 4,
+        opacity: finished ? 0.65 : 0.95
+      }));
+    });
+  }
+
   function locations() {
     var byId = {};
     data.forEach(function (point) {
+      if (point.package === "IAC") return;
       var place = byId[point.id];
       if (!place) {
         place = { id: point.id, x: point.x, y: point.y, fou: null, wtg: null };
@@ -204,7 +230,7 @@
       if (installing(point)) names.push(point.package + " " + point.id);
     });
     if (names.length) text += " · Installing " + names.join(", ");
-    ["FOU", "WTG"].forEach(function (packageName) {
+    ["FOU", "IAC", "WTG"].forEach(function (packageName) {
       var rows = data.filter(function (point) { return point.package === packageName; });
       if (!rows.length) return;
       var complete = rows.filter(function (point) { return time >= point.end; }).length;
@@ -221,7 +247,11 @@
   function draw() {
     base();
     var grouped = groups();
-    Object.keys(grouped).forEach(function (packageName) { drawRoutes(grouped[packageName]); });
+    Object.keys(grouped).forEach(function (packageName) {
+      if (packageName === "IAC") return;
+      drawRoutes(grouped[packageName]);
+    });
+    drawCables();
     locations().forEach(drawLocation);
     document.getElementById("timelapse-status").textContent = statusText();
     document.getElementById("timelapse-slider").value = String(sliderValue());

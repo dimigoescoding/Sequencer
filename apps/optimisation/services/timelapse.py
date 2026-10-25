@@ -1,9 +1,10 @@
 """Points for the installation timelapse.
 
-FOU and WTG share one calendar. Installation sequence 1 uses programme slot 1
-of that package, sequence 2 uses slot 2, and so on. A slot is not a location id.
-IAC is left out of the plot. Coordinates come from the dataset stored with the
-run. Nothing about a particular project layout is fixed here.
+FOU, IAC, and WTG share one calendar. Installation sequence 1 uses programme
+slot 1 of that package, sequence 2 uses slot 2, and so on. A slot is not a
+location id. An IAC row is the line between its two location ids. Coordinates
+come from the dataset stored with the run. Nothing about a particular project
+layout is fixed here.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from apps.optimisation.services.routing import format_nautical_miles, metres_xy
 _PLOTTED = ("FOU", "WTG")
 _WINDOWS = {
     "FOU": ("fou_p50_start", "fou_p50_end"),
+    "IAC": ("iac_p50_start", "iac_p50_end"),
     "WTG": ("wtg_p50_start", "wtg_p50_end"),
 }
 _NO_DATES = (
@@ -28,19 +30,20 @@ _NO_DATES = (
 
 def timelapse_payload(run: OptimisationRun) -> dict[str, Any]:
     sequence = list(run.sequence_rows.all().order_by("package", "installation_sequence"))
-    grouped = {package: [] for package in _PLOTTED}
+    grouped = {package: [] for package in ("FOU", "IAC", "WTG")}
     for row in sequence:
         package = _package(row)
         if package in grouped:
             grouped[package].append(row)
-    plotted = [row for rows in grouped.values() for row in rows]
-    if not plotted:
+    if not any(grouped.values()):
         return _empty()
     slots = {slot.slot: slot for slot in run.dataset_version.programme_slots.all()}
     coverage = {
-        package: _coverage(rows, slots, package) for package, rows in grouped.items() if rows
+        package: _coverage(rows, slots, package)
+        for package, rows in grouped.items()
+        if package in _PLOTTED and rows
     }
-    if all(dated == 0 for dated, _total in coverage.values()):
+    if coverage and all(dated == 0 for dated, _total in coverage.values()):
         return _empty(notice=_NO_DATES)
     if any(dated != total for dated, total in coverage.values()):
         detail = ", ".join(
@@ -58,7 +61,8 @@ def timelapse_payload(run: OptimisationRun) -> dict[str, Any]:
     }
     activities = []
     missing = []
-    for package, rows in grouped.items():
+    for package in _PLOTTED:
+        rows = grouped[package]
         for row in rows:
             place = located[package].get(row.foundation_id)
             if place is None or place.easting_m is None or place.northing_m is None:
@@ -79,6 +83,7 @@ def timelapse_payload(run: OptimisationRun) -> dict[str, Any]:
                     "end": _ms(end),
                 }
             )
+    _add_cables(run, grouped["IAC"], slots, activities, missing)
     if missing or not activities:
         return _empty(missing=missing)
     activities.sort(key=lambda item: (item["start"], item["package"], item["seq"]))
@@ -93,6 +98,46 @@ def timelapse_payload(run: OptimisationRun) -> dict[str, Any]:
             "horizon": max(item["end"] for item in activities),
         },
     }
+
+
+def _add_cables(run, rows, slots, activities: list[dict[str, Any]], missing: list[str]) -> None:
+    places: dict[str, tuple[float, float]] = {}
+    for row in run.dataset_version.foundations.all():
+        if row.easting_m is None or row.northing_m is None:
+            continue
+        places[row.foundation_id.casefold()] = (float(row.easting_m), float(row.northing_m))
+    for row in run.dataset_version.wtg_locations.all():
+        if row.easting_m is None or row.northing_m is None:
+            continue
+        places.setdefault(row.wtg_id.casefold(), (float(row.easting_m), float(row.northing_m)))
+    cables = {row.cable_id.casefold(): row for row in run.dataset_version.cables.all()}
+    for row in rows:
+        window = _window(slots.get(row.installation_sequence), "IAC")
+        if window is None:
+            continue
+        cable = cables.get(str(row.foundation_id).casefold())
+        start = places.get(cable.start_location_id.casefold()) if cable is not None else None
+        end = places.get(cable.end_location_id.casefold()) if cable is not None else None
+        if start is None or end is None:
+            missing.append(f"IAC {row.foundation_id}")
+            continue
+        start_at, end_at = window
+        activities.append(
+            {
+                "package": "IAC",
+                "marker": "line",
+                "seq": row.installation_sequence,
+                "trip": row.trip,
+                "pos": row.vessel_position,
+                "id": row.foundation_id,
+                "x": start[0],
+                "y": start[1],
+                "x2": end[0],
+                "y2": end[1],
+                "start": _ms(start_at),
+                "end": _ms(end_at),
+            }
+        )
 
 
 def _package(row) -> str:
