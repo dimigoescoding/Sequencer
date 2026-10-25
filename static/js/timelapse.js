@@ -147,6 +147,7 @@
   function drawCables() {
     data.forEach(function (point) {
       if (point.package !== "IAC" || point.x2 == null || point.y2 == null) return;
+      if (time < point.start) return;
       var finished = time >= point.end;
       svg.appendChild(el("line", {
         x1: layout.X(point.x), y1: layout.Y(point.y),
