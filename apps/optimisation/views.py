@@ -1,5 +1,5 @@
 from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator
+from django.db.models import Case, IntegerField, When
 from django.http import HttpResponse
 from django.shortcuts import render
 
@@ -28,12 +28,21 @@ def run_detail(request, run_id: int):
     query = request.GET.get("q", "").strip()
     if query:
         rows = rows.filter(foundation_id__icontains=query)
-    sort = request.GET.get("sort", "installation_sequence")
+    package_order = Case(
+        When(package="FOU", then=0),
+        When(package="", then=0),
+        When(package="IAC", then=1),
+        When(package="WTG", then=2),
+        default=3,
+        output_field=IntegerField(),
+    )
+    sort = request.GET.get("sort", "")
     if sort not in SEQUENCE_SORTS:
-        sort = "installation_sequence"
-    if request.GET.get("dir") == "desc":
-        sort = f"-{sort}"
-    rows = rows.order_by(sort, "package", "installation_sequence", "id")
+        rows = rows.order_by(package_order, "installation_sequence", "id")
+    else:
+        if request.GET.get("dir") == "desc":
+            sort = f"-{sort}"
+        rows = rows.order_by(sort, package_order, "installation_sequence", "id")
     tab = request.GET.get("tab", "sequence")
     return render(
         request,
@@ -42,7 +51,7 @@ def run_detail(request, run_id: int):
             "project": run.scenario.project,
             "scenario": run.scenario,
             "run": run,
-            "page_obj": Paginator(rows, 25).get_page(request.GET.get("page")),
+            "sequence_rows": rows,
             "trips": run.trip_rows.all(),
             "checks": run.validation_rows.all(),
             "tab": tab,
