@@ -233,6 +233,25 @@ def matching_foundations(
     return []
 
 
+def loop_id_groups(items: list[FoundationInput]) -> list[list[int]]:
+    """Indexes of included cables that share a Loop ID, in sheet order.
+
+    A blank Loop ID is not a group. A value used once is not returned.
+    """
+    groups: dict[str, list[int]] = {}
+    order: list[str] = []
+    for index, item in enumerate(items):
+        label = str(attribute_value(item, "Loop ID") or "").strip()
+        if not label:
+            continue
+        key = label.casefold()
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(index)
+    return [groups[key] for key in order if len(groups[key]) > 1]
+
+
 def column_state(
     foundations: list[FoundationInput], columns_present: set[str]
 ) -> dict[str, dict[str, bool]]:

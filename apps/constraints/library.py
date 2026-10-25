@@ -107,6 +107,13 @@ CONSTRAINT_TYPES: dict[str, dict[str, str]] = {
         "label": "Avoid matches in the first trips",
         "summary": "Matching locations are kept out of the first trips named by the rule.",
     },
+    "loop_id_sequence": {
+        "label": "Loop ID sequence",
+        "summary": (
+            "Cables with the same Loop ID are installed one after another, in the IAC sheet order, "
+            "inside one trip. Different Loop IDs may come in any order. A blank Loop ID is not grouped."
+        ),
+    },
     "package_buffer": {
         "label": "Package buffer",
         "summary": (

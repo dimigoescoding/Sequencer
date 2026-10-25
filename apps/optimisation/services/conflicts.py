@@ -10,6 +10,7 @@ from typing import Any
 from apps.constraints.services.matching import (
     ORDERING_ATTRIBUTES,
     column_state,
+    loop_id_groups,
     matching_foundations,
 )
 from apps.constraints.services.parameters import validate_parameters
@@ -249,6 +250,14 @@ def _apply_hard(
     count = len(included)
     trips = required_trips(count, capacity)
 
+    if kind == "loop_id_sequence":
+        for indexes in loop_id_groups(included):
+            if len(indexes) > capacity:
+                conflicts.append(
+                    f"{constraint.name} keeps {len(indexes)} cables with one Loop ID together "
+                    f"inside one trip, above the trip capacity of {capacity}."
+                )
+        return
     if kind == "maximum_trip_payload":
         hard_payloads.append((constraint.name, Decimal(str(parameters["maximum_payload_t"]))))
         return

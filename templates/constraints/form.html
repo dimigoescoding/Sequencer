@@ -14,6 +14,9 @@
 {% if constraint_type == "earliest_sequence" %}
   <div class="alert alert-secondary">Choose one location or an attribute. The number is the first trip those locations may be installed. Enter 2 to keep them out of the first trip. For a Yes/No column such as Shallow location, use equals and YES.</div>
 {% endif %}
+{% if constraint_type == "loop_id_sequence" %}
+  <div class="alert alert-secondary">Cables that share a Loop ID follow the IAC sheet, one after another, and stay inside one trip. A different Loop ID may come before or after that block. A blank Loop ID is not grouped. A hard rule that cannot be met makes the run invalid. A soft rule penalises a break and keeps the run valid.</div>
+{% endif %}
 {% if constraint_type == "package_buffer" %}
   <div class="alert alert-secondary">IAC waits for the FOU end at the same location. WTG waits until every cable that touches that location is complete. IAC starts at a location when the first of those cables starts. The gap uses the programme P50 dates of each sequence slot. A location missing from the previous package is left out. Maximize has no day limit. A hard minimum must be met. A soft minimum penalises the shortfall by severity.</div>
 {% endif %}

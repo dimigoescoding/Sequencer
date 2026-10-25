@@ -14,7 +14,7 @@ from typing import Any
 
 from ortools.sat.python import cp_model
 
-from apps.constraints.services.matching import matching_foundations
+from apps.constraints.services.matching import loop_id_groups, matching_foundations
 from apps.optimisation.services.buffer import (
     DAY_SECONDS,
     PREVIOUS,
@@ -906,6 +906,7 @@ class _Builder:
             "minimise_within_trip_distance": self._distance,
             "matching_installed_first": self._installed_first,
             "avoid_matching_in_first_trips": self._avoid_first_trips,
+            "loop_id_sequence": self._loop_sequence,
         }.get(kind)
         if handler:
             handler(constraint)
@@ -1295,6 +1296,33 @@ class _Builder:
             self.model.Add(short >= earliest - self.position_of[index])
             violations.append(short)
         self._penalise(sum(violations), max(limit * len(indexes), 1), constraint.severity)
+
+    def _loop_sequence(self, constraint: ConstraintInput) -> None:
+        groups = loop_id_groups(self.included)
+        if not groups or self.n < 2:
+            return
+        if constraint.enforcement == "hard":
+            for indexes in groups:
+                for left, right in zip(indexes, indexes[1:], strict=False):
+                    self.model.Add(self.position_of[right] == self.position_of[left] + 1)
+                    self.model.Add(self.trip_of[right] == self.trip_of[left])
+            return
+        terms = []
+        span = (self.n - 1) + self.n
+        for indexes in groups:
+            for left, right in zip(indexes, indexes[1:], strict=False):
+                gap = self._int(1 - self.n, self.n - 1, "loopgap")
+                self.model.Add(gap == self.position_of[right] - self.position_of[left] - 1)
+                deviation = self._int(0, self.n - 1, "loopdev")
+                self.model.AddAbsEquality(deviation, gap)
+                same_trip = self._bool("loopsame")
+                self.model.Add(self.trip_of[right] == self.trip_of[left]).OnlyEnforceIf(same_trip)
+                self.model.Add(self.trip_of[right] != self.trip_of[left]).OnlyEnforceIf(
+                    same_trip.Not()
+                )
+                terms.append(deviation + (1 - same_trip) * self.n)
+        if terms:
+            self._penalise(sum(terms), span * len(terms), constraint.severity)
 
     def _distance(self, constraint: ConstraintInput) -> None:
         """Minimise every consecutive foundation-to-foundation leg. Harbour is excluded."""
