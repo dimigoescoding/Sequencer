@@ -67,12 +67,13 @@
     <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-2">
       <div>
         <h2 class="h5 mb-1">Installation sequence</h2>
-        <p class="small text-secondary mb-0">Easting/Northing · equal scale · calendar time · circle FOU · line IAC · square WTG · no harbour or inter-trip legs{% if timelapse.within_trip %} · within-trip {{ timelapse.within_trip }}{% endif %}</p>
+        <p class="small text-secondary mb-0">Easting/Northing · equal scale · calendar time · pizza per location and per cable{% if timelapse.within_trip %} · within-trip {{ timelapse.within_trip }}{% endif %}</p>
       </div>
     </div>
     {% if timelapse.activities %}
       <div id="timelapse-stage" class="timelapse-stage">
         <div id="timelapse-status" class="fw-bold mb-2"></div>
+        <div id="timelapse-legend" class="d-flex flex-wrap gap-3 mb-2 small"></div>
         <svg id="timelapse-map" class="timelapse-map" viewBox="0 0 1500 860" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Installation sequence on easting and northing axes"></svg>
         <div class="timelapse-controls">
           <button type="button" id="timelapse-play">Pause</button>
@@ -87,7 +88,7 @@
             </select>
           </label>
           <input id="timelapse-slider" type="range" min="0" max="1000" value="0">
-          <span class="small text-secondary">One calendar. An IAC line appears at its start, stays green until its finish, then remains grey. Step jumps to the next installation.</span>
+          <span class="small text-secondary">One calendar. A slice fills when that activity ends. The pizza is highlighted while an activity is in progress. Step jumps to the next start.</span>
           <button type="button" id="timelapse-fullscreen">Full screen</button>
         </div>
       </div>

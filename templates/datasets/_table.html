@@ -100,9 +100,14 @@
           <div class="foundation-scroll"><table class="table table-sm table-striped mb-0">
             <thead><tr>
               <th>Location</th>
-              <th>FOU P50 start</th><th>FOU P50 end</th>
-              <th>IAC P50 start</th><th>IAC P50 end</th>
-              <th>WTG P50 start</th><th>WTG P50 end</th>
+              <th>FOU installation start</th><th>FOU installation end</th>
+              <th>SSt installation start</th><th>SSt installation end</th>
+              <th>Filter layer start</th><th>Filter layer end</th>
+              <th>Armour layer start</th><th>Armour layer end</th>
+              <th>IAC lay start</th><th>IAC lay end</th>
+              <th>IAC burial start</th><th>IAC burial end</th>
+              <th>WTG installation start</th><th>WTG installation end</th>
+              <th>WTG commissioning start</th><th>WTG commissioning end</th>
             </tr></thead>
             <tbody>
               {% for row in slots %}
@@ -110,10 +115,20 @@
                   <td>{{ row.slot }}</td>
                   <td>{{ row.fou_p50_start|date:"Y-m-d H:i"|default:"—" }}</td>
                   <td>{{ row.fou_p50_end|date:"Y-m-d H:i"|default:"—" }}</td>
+                  <td>{{ row.sst_p50_start|date:"Y-m-d H:i"|default:"—" }}</td>
+                  <td>{{ row.sst_p50_end|date:"Y-m-d H:i"|default:"—" }}</td>
+                  <td>{{ row.filter_p50_start|date:"Y-m-d H:i"|default:"—" }}</td>
+                  <td>{{ row.filter_p50_end|date:"Y-m-d H:i"|default:"—" }}</td>
+                  <td>{{ row.armour_p50_start|date:"Y-m-d H:i"|default:"—" }}</td>
+                  <td>{{ row.armour_p50_end|date:"Y-m-d H:i"|default:"—" }}</td>
                   <td>{{ row.iac_p50_start|date:"Y-m-d H:i"|default:"—" }}</td>
                   <td>{{ row.iac_p50_end|date:"Y-m-d H:i"|default:"—" }}</td>
+                  <td>{{ row.burial_p50_start|date:"Y-m-d H:i"|default:"—" }}</td>
+                  <td>{{ row.burial_p50_end|date:"Y-m-d H:i"|default:"—" }}</td>
                   <td>{{ row.wtg_p50_start|date:"Y-m-d H:i"|default:"—" }}</td>
                   <td>{{ row.wtg_p50_end|date:"Y-m-d H:i"|default:"—" }}</td>
+                  <td>{{ row.commissioning_p50_start|date:"Y-m-d H:i"|default:"—" }}</td>
+                  <td>{{ row.commissioning_p50_end|date:"Y-m-d H:i"|default:"—" }}</td>
                 </tr>
               {% endfor %}
             </tbody>

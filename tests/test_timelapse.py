@@ -73,8 +73,7 @@ def test_visual_tab_plots_the_stored_sequence(client):
     assert response.status_code == 200
     body = response.content.decode()
     assert "calendar time" in body
-    assert "circle FOU" in body
-    assert "square WTG" in body
+    assert "pizza per location" in body
     assert "52.347" not in body
     assert 'id="timelapse-play"' in body
     assert ">Pause<" in body

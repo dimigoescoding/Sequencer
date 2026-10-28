@@ -154,10 +154,20 @@ class ProgrammeSlot(models.Model):
     slot = models.PositiveIntegerField()
     fou_p50_start = models.DateTimeField(null=True, blank=True)
     fou_p50_end = models.DateTimeField(null=True, blank=True)
+    sst_p50_start = models.DateTimeField(null=True, blank=True)
+    sst_p50_end = models.DateTimeField(null=True, blank=True)
+    filter_p50_start = models.DateTimeField(null=True, blank=True)
+    filter_p50_end = models.DateTimeField(null=True, blank=True)
+    armour_p50_start = models.DateTimeField(null=True, blank=True)
+    armour_p50_end = models.DateTimeField(null=True, blank=True)
     iac_p50_start = models.DateTimeField(null=True, blank=True)
     iac_p50_end = models.DateTimeField(null=True, blank=True)
+    burial_p50_start = models.DateTimeField(null=True, blank=True)
+    burial_p50_end = models.DateTimeField(null=True, blank=True)
     wtg_p50_start = models.DateTimeField(null=True, blank=True)
     wtg_p50_end = models.DateTimeField(null=True, blank=True)
+    commissioning_p50_start = models.DateTimeField(null=True, blank=True)
+    commissioning_p50_end = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["slot", "id"]

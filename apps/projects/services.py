@@ -121,10 +121,20 @@ def duplicate_project(project: Project) -> Project:
                         slot=row.slot,
                         fou_p50_start=row.fou_p50_start,
                         fou_p50_end=row.fou_p50_end,
+                        sst_p50_start=row.sst_p50_start,
+                        sst_p50_end=row.sst_p50_end,
+                        filter_p50_start=row.filter_p50_start,
+                        filter_p50_end=row.filter_p50_end,
+                        armour_p50_start=row.armour_p50_start,
+                        armour_p50_end=row.armour_p50_end,
                         iac_p50_start=row.iac_p50_start,
                         iac_p50_end=row.iac_p50_end,
+                        burial_p50_start=row.burial_p50_start,
+                        burial_p50_end=row.burial_p50_end,
                         wtg_p50_start=row.wtg_p50_start,
                         wtg_p50_end=row.wtg_p50_end,
+                        commissioning_p50_start=row.commissioning_p50_start,
+                        commissioning_p50_end=row.commissioning_p50_end,
                     )
                     for row in version.programme_slots.all()
                 ]
