@@ -1,4 +1,4 @@
-/* Calendar timelapse. One pizza per location and one per cable. No route lines. */
+/* Calendar timelapse. One pizza per location and one per cable. Cable lines only. */
 (function () {
   var node = document.getElementById("timelapse-data");
   var svg = document.getElementById("timelapse-map");
@@ -18,6 +18,8 @@
   var pace = DAY;
   var sliderMax = 1000;
   var layout = project(places);
+  var laidGrey = "#b7c0ca";
+  var buriedGrey = "#5c6770";
   var sliceOrder = [
     "MP Installed",
     "S St Installed",
@@ -42,6 +44,14 @@
     points.forEach(function (point) {
       xs.push(point.x);
       ys.push(point.y);
+      if (point.x1 != null && point.y1 != null) {
+        xs.push(point.x1);
+        ys.push(point.y1);
+      }
+      if (point.x2 != null && point.y2 != null) {
+        xs.push(point.x2);
+        ys.push(point.y2);
+      }
     });
     labels.forEach(function (label) {
       xs.push(label.x);
@@ -159,14 +169,60 @@
         cx: cx, cy: cy, r: radius, fill: "none", stroke: "#c5ced6", "stroke-width": 1
       }));
     }
-    if (installing) {
+    if (installing && place.kind !== "cable") {
       svg.appendChild(el("circle", {
         cx: cx, cy: cy, r: radius + 5, fill: "none", stroke: "#172033", "stroke-width": 3
       }));
     }
-    svg.appendChild(el("text", {
-      x: cx + radius + 6, y: cy + 4, "text-anchor": "start", class: "label"
-    }, place.id));
+    if (place.kind !== "cable") {
+      svg.appendChild(el("text", {
+        x: cx + radius + 6, y: cy + 4, "text-anchor": "start", class: "label"
+      }, place.id));
+    }
+  }
+
+  function sliceNamed(place, label) {
+    var slices = place.slices || [];
+    var index;
+    for (index = 0; index < slices.length; index += 1) {
+      if (slices[index].label === label) return slices[index];
+    }
+    return null;
+  }
+
+  function cableStyle(place) {
+    var lay = sliceNamed(place, "IAC Lay");
+    var burial = sliceNamed(place, "IAC Burial");
+    var laying = lay && lay.start <= time && time < lay.end;
+    var burying = burial && burial.start <= time && time < burial.end;
+    if (burying) return { stroke: burial.color, opacity: 0.95, active: true };
+    if (laying) return { stroke: lay.color, opacity: 0.95, active: true };
+    if (burial && time >= burial.end) return { stroke: buriedGrey, opacity: 0.9, active: false };
+    if (lay && time >= lay.end) return { stroke: laidGrey, opacity: 0.65, active: false };
+    return null;
+  }
+
+  function drawCableLine(place, style) {
+    svg.appendChild(el("line", {
+      x1: layout.X(place.x1), y1: layout.Y(place.y1),
+      x2: layout.X(place.x2), y2: layout.Y(place.y2),
+      class: "route",
+      stroke: style.stroke,
+      "stroke-width": 4,
+      opacity: style.opacity
+    }));
+  }
+
+  function drawCables() {
+    var active = [];
+    places.forEach(function (place) {
+      if (place.kind !== "cable" || place.x1 == null || place.x2 == null) return;
+      var style = cableStyle(place);
+      if (!style) return;
+      if (style.active) active.push({ place: place, style: style });
+      else drawCableLine(place, style);
+    });
+    active.forEach(function (item) { drawCableLine(item.place, item.style); });
   }
 
   function drawLabels() {
@@ -231,6 +287,7 @@
 
   function draw() {
     base();
+    drawCables();
     drawLabels();
     places.forEach(drawPizza);
     legend();
