@@ -1,4 +1,5 @@
 from django import forms
+from django.db.models import Q
 
 from apps.scenarios.models import Scenario, VesselSettings
 from apps.ui import apply_bootstrap
@@ -18,6 +19,31 @@ class ScenarioForm(forms.ModelForm):
             "dataset_version"
         ].help_text = "Optimisation uses this version even if you later activate another dataset."
         apply_bootstrap(self)
+
+
+class ScenarioDatasetForm(forms.ModelForm):
+    class Meta:
+        model = Scenario
+        fields = ["dataset_version"]
+
+    def __init__(self, project, scenario, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        current_id = scenario.dataset_version_id or 0
+        self.fields["dataset_version"].queryset = project.dataset_versions.filter(
+            Q(error_count=0) | Q(pk=current_id)
+        )
+        self.fields["dataset_version"].required = False
+        self.fields["dataset_version"].label = "Dataset"
+        self.fields["dataset_version"].help_text = (
+            "Optimisation uses this version even if another dataset is active on the project."
+        )
+        self.fields["dataset_version"].label_from_instance = _dataset_label
+        apply_bootstrap(self)
+
+
+def _dataset_label(version) -> str:
+    active = " · active" if version.is_active else ""
+    return f"Version {version.version_number} · {version.included_count} included{active}"
 
 
 class VesselSettingsForm(forms.ModelForm):

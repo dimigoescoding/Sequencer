@@ -12,6 +12,7 @@ urlpatterns = [
     path("<int:scenario_id>/duplicate/", views.scenario_duplicate, name="duplicate"),
     path("<int:scenario_id>/delete/", views.scenario_delete, name="delete"),
     path("<int:scenario_id>/settings/", views.vessel_settings, name="settings"),
+    path("<int:scenario_id>/dataset/", views.scenario_dataset, name="dataset"),
     path("<int:scenario_id>/generate/", views.generate, name="generate"),
     path("<int:scenario_id>/runs/", views.scenario_runs, name="runs"),
 ]

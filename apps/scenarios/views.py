@@ -4,9 +4,11 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 
 from apps.access import owned_project, owned_scenario
+from apps.datasets.forms import UploadForm
+from apps.datasets.services.uploads import UploadRejected, create_dataset_version
 from apps.optimisation.services.runner import SolveBlocked, SolveBusy, blocking_messages, execute
 from apps.projects.services import duplicate_scenario
-from apps.scenarios.forms import ProgrammeSettingsForm, ScenarioForm
+from apps.scenarios.forms import ProgrammeSettingsForm, ScenarioDatasetForm, ScenarioForm
 from apps.scenarios.models import VesselSettings
 from apps.scenarios.services.sync import sync_scenario_from_dataset
 
@@ -109,6 +111,74 @@ def vessel_settings(request, project_id: int, scenario_id: int):
         request,
         "scenarios/settings.html",
         {"project": scenario.project, "scenario": scenario, "form": form},
+    )
+
+
+@login_required
+def scenario_dataset(request, project_id: int, scenario_id: int):
+    scenario = owned_scenario(request.user, project_id, scenario_id)
+    project = scenario.project
+    previous_dataset = scenario.dataset_version_id
+    uploading = request.method == "POST" and request.POST.get("action") == "upload"
+    if uploading:
+        select_form = ScenarioDatasetForm(project, scenario, instance=scenario)
+        upload_form = UploadForm(request.POST, request.FILES)
+        if upload_form.is_valid():
+            workbook = upload_form.cleaned_data["workbook"]
+            try:
+                version = create_dataset_version(
+                    project=project,
+                    user=request.user,
+                    filename=workbook.name,
+                    content=workbook.read(),
+                )
+            except UploadRejected as exc:
+                upload_form.add_error("workbook", str(exc))
+            else:
+                if version.error_count:
+                    messages.error(
+                        request,
+                        f"Version {version.version_number} is stored and was not selected. "
+                        "Critical errors block optimisation.",
+                    )
+                    return redirect(
+                        "datasets:version", project_id=project.pk, version_id=version.pk
+                    )
+                scenario.dataset_version = version
+                scenario.save(update_fields=["dataset_version", "updated_at"])
+                sync_scenario_from_dataset(scenario)
+                if version.warning_count:
+                    messages.warning(
+                        request,
+                        f"Version {version.version_number} is now this scenario's dataset. "
+                        "Warnings do not block optimisation.",
+                    )
+                else:
+                    messages.success(
+                        request,
+                        f"Version {version.version_number} is now this scenario's dataset.",
+                    )
+                return redirect(scenario)
+    else:
+        upload_form = UploadForm()
+        select_form = ScenarioDatasetForm(
+            project, scenario, request.POST or None, instance=scenario
+        )
+        if request.method == "POST" and select_form.is_valid():
+            updated = select_form.save()
+            if updated.dataset_version_id != previous_dataset:
+                sync_scenario_from_dataset(updated)
+            messages.success(request, "Dataset saved.")
+            return redirect(scenario)
+    return render(
+        request,
+        "scenarios/dataset.html",
+        {
+            "project": project,
+            "scenario": scenario,
+            "form": select_form,
+            "upload_form": upload_form,
+        },
     )
 
 

@@ -20,6 +20,7 @@
         <p class="small text-secondary">This scenario is not using the project's currently active dataset.</p>
       {% endif %}
     {% else %}<p>No dataset selected.</p>{% endif %}
+    <a href="{% url 'scenarios:dataset' project.pk scenario.pk %}">Edit dataset</a>
   </div></div></div>
   <div class="col-md-4"><div class="card h-100"><div class="card-body">
     <h2 class="h6">Settings</h2>
