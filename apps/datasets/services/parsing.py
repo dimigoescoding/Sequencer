@@ -152,16 +152,56 @@ class WtgRow:
     source_row: int
 
 
+_ACTIVITY_HEADERS = {
+    "fou": "fou",
+    "fou installation": "fou",
+    "sst": "sst",
+    "sst installation": "sst",
+    "s st installation": "sst",
+    "filter layer": "filter",
+    "armour layer": "armour",
+    "armor layer": "armour",
+    "iac": "iac",
+    "iac lay": "iac",
+    "iac burial": "burial",
+    "wtg": "wtg",
+    "wtg installation": "wtg",
+    "wtg commissioning": "commissioning",
+    "wtg commissioned": "commissioning",
+}
+_REQUIRED_ACTIVITIES = ("fou", "iac", "wtg")
+_ACTIVITY_NAMES = {
+    "fou": "FOU installation",
+    "sst": "SSt installation",
+    "filter": "Filter layer",
+    "armour": "Armour layer",
+    "iac": "IAC lay",
+    "burial": "IAC burial",
+    "wtg": "WTG installation",
+    "commissioning": "WTG commissioning",
+}
+
+
 @dataclass
 class ProgrammeRow:
     slot: int
     source_row: int
     fou_p50_start: datetime | None = None
     fou_p50_end: datetime | None = None
+    sst_p50_start: datetime | None = None
+    sst_p50_end: datetime | None = None
+    filter_p50_start: datetime | None = None
+    filter_p50_end: datetime | None = None
+    armour_p50_start: datetime | None = None
+    armour_p50_end: datetime | None = None
     iac_p50_start: datetime | None = None
     iac_p50_end: datetime | None = None
+    burial_p50_start: datetime | None = None
+    burial_p50_end: datetime | None = None
     wtg_p50_start: datetime | None = None
     wtg_p50_end: datetime | None = None
+    commissioning_p50_start: datetime | None = None
+    commissioning_p50_end: datetime | None = None
 
 
 @dataclass
@@ -649,26 +689,35 @@ def _parse_programme(
     packages: list[str] = []
     current = ""
     for cell in rows[0]:
-        text = _text(cell.value).casefold()
+        text = _text(cell.value)
         if text:
-            current = text
+            current = _ACTIVITY_HEADERS.get(_plain_header(text), "")
         packages.append(current)
     headers = [_plain_header(cell.value) for cell in rows[1]]
     location_index = next((index for index, name in enumerate(headers) if name == "location"), None)
     dates: dict[tuple[str, str], int] = {}
     for index, name in enumerate(headers):
         package = packages[index] if index < len(packages) else ""
-        if package in {"fou", "iac", "wtg"} and name in {"p50 start", "p50 end"}:
+        if package and name in {"p50 start", "p50 end"}:
             kind = "start" if name.endswith("start") else "end"
             dates[(package, kind)] = index
     expected = {
-        ("fou", "start"),
-        ("fou", "end"),
-        ("iac", "start"),
-        ("iac", "end"),
-        ("wtg", "start"),
-        ("wtg", "end"),
+        (activity, kind) for activity in _REQUIRED_ACTIVITIES for kind in ("start", "end")
     }
+    present = {activity for activity, _kind in dates}
+    incomplete = [
+        _ACTIVITY_NAMES[activity]
+        for activity in present
+        if (activity, "start") not in dates or (activity, "end") not in dates
+    ]
+    if incomplete:
+        return [], [
+            Issue(
+                "error",
+                "missing_columns",
+                "Programme must list P50 start and end for " + ", ".join(incomplete) + ".",
+            )
+        ]
     if location_index is None or expected - set(dates):
         return [], [
             Issue(
@@ -710,7 +759,7 @@ def _parse_programme(
         seen.add(slot)
         values: dict[str, datetime | None] = {}
         failed = False
-        for package, kind in expected:
+        for package, kind in sorted(dates):
             raw, kind_name = _cached_value(excel_row, dates[(package, kind)], cached_sheet)
             if kind_name == "formula_missing":
                 failed = True
@@ -731,7 +780,8 @@ def _parse_programme(
                     Issue(
                         "error",
                         "invalid_date",
-                        f"Programme row {row_number} {package.upper()} P50 {kind} must be a date.",
+                        f"Programme row {row_number} {_ACTIVITY_NAMES.get(package, package)} "
+                        f"P50 {kind} must be a date.",
                         row_number=row_number,
                         column_name="P50",
                     )

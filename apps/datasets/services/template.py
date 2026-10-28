@@ -61,30 +61,32 @@ def build_template() -> bytes:
     wtg = workbook.create_sheet("WTG data")
     _write_header(wtg, WTG_HEADERS, header_fill, header_font)
     programme = workbook.create_sheet("Programme")
-    programme["B1"] = "FOU"
-    programme["D1"] = "IAC"
-    programme["F1"] = "WTG"
-    programme.merge_cells("B1:C1")
-    programme.merge_cells("D1:E1")
-    programme.merge_cells("F1:G1")
-    second = (
-        "Location",
-        "P50 Start",
-        "P50 End",
-        "P50 Start",
-        "P50 End",
-        "P50 Start",
-        "P50 End",
+    activities = (
+        "FOU installation",
+        "SSt installation",
+        "Filter layer",
+        "Armour layer",
+        "IAC lay",
+        "IAC burial",
+        "WTG installation",
+        "WTG commissioning",
     )
-    for index, name in enumerate(second, start=1):
-        cell = programme.cell(2, index, name)
-        cell.fill = header_fill
-        cell.font = header_font
-        programme.column_dimensions[get_column_letter(index)].width = 20
-    for cell in programme[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal="center")
+    programme.cell(2, 1, "Location")
+    for index, name in enumerate(activities):
+        column = 2 + index * 2
+        programme.cell(1, column, name)
+        programme.merge_cells(
+            start_row=1, start_column=column, end_row=1, end_column=column + 1
+        )
+        programme.cell(2, column, "P50 Start")
+        programme.cell(2, column + 1, "P50 End")
+    for index in range(1, 18):
+        programme.column_dimensions[get_column_letter(index)].width = 22
+    for row in programme.iter_rows(min_row=1, max_row=2, max_col=17):
+        for cell in row:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center")
     programme.freeze_panes = "A3"
     buffer = BytesIO()
     workbook.save(buffer)

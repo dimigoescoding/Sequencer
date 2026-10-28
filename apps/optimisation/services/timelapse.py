@@ -2,9 +2,10 @@
 
 FOU, IAC, and WTG share one calendar. Installation sequence 1 uses programme
 slot 1 of that package, sequence 2 uses slot 2, and so on. A slot is not a
-location id. An IAC row is the line between its two location ids. Coordinates
-come from the dataset stored with the run. Nothing about a particular project
-layout is fixed here.
+location id. SSt installation, filter layer, and armour layer use the FOU
+sequence. IAC burial uses the IAC sequence. WTG commissioning uses the WTG
+sequence. A slice is omitted when its dates are blank. The OSS id is a label.
+Coordinates come from the dataset stored with the run.
 """
 
 from __future__ import annotations
@@ -22,6 +23,20 @@ _WINDOWS = {
     "IAC": ("iac_p50_start", "iac_p50_end"),
     "WTG": ("wtg_p50_start", "wtg_p50_end"),
 }
+_LOCATION_SLICES = (
+    ("MP Installed", "#1f77b4", "fou_p50_start", "fou_p50_end"),
+    ("S St Installed", "#9467bd", "sst_p50_start", "sst_p50_end"),
+    ("Filter Layer", "#17becf", "filter_p50_start", "filter_p50_end"),
+    ("Armour Layer", "#8c564b", "armour_p50_start", "armour_p50_end"),
+)
+_WTG_SLICES = (
+    ("WTG Installed", "#ff7f0e", "wtg_p50_start", "wtg_p50_end"),
+    ("WTG Commissioned", "#d62728", "commissioning_p50_start", "commissioning_p50_end"),
+)
+_CABLE_SLICES = (
+    ("IAC Lay", "#2ca02c", "iac_p50_start", "iac_p50_end"),
+    ("IAC Burial", "#bcbd22", "burial_p50_start", "burial_p50_end"),
+)
 _NO_DATES = (
     "This dataset has no programme dates for the sequenced FOU and WTG locations, "
     "so the calendar plot is not drawn."
@@ -84,9 +99,14 @@ def timelapse_payload(run: OptimisationRun) -> dict[str, Any]:
                 }
             )
     _add_cables(run, grouped["IAC"], slots, activities, missing)
+    places = _places(run, grouped, slots, located, missing)
     if missing or not activities:
         return _empty(missing=missing)
     activities.sort(key=lambda item: (item["start"], item["package"], item["seq"]))
+    moments = [item["start"] for item in activities] + [item["end"] for item in activities]
+    for place in places:
+        for sliver in place["slices"]:
+            moments.extend((sliver["start"], sliver["end"]))
     return {
         "activities": activities,
         "missing": [],
@@ -94,11 +114,99 @@ def timelapse_payload(run: OptimisationRun) -> dict[str, Any]:
         "notice": "",
         "player": {
             "activities": activities,
+            "places": places,
             "labels": _oss_labels(run),
-            "origin": min(item["start"] for item in activities),
-            "horizon": max(item["end"] for item in activities),
+            "origin": min(moments),
+            "horizon": max(moments),
         },
     }
+
+
+def _places(run, grouped, slots, located, missing: list[str]) -> list[dict[str, Any]]:
+    """One pizza per sequenced location, and one per cable that has lay or burial dates."""
+    places: dict[str, dict[str, Any]] = {}
+    for row in grouped["FOU"]:
+        _location_place(places, located["FOU"], row, slots, _LOCATION_SLICES, missing)
+    for row in grouped["WTG"]:
+        _location_place(places, located["WTG"], row, slots, _WTG_SLICES, missing)
+    cables = _cable_places(run, grouped["IAC"], slots, missing)
+    ordered = sorted(places.values(), key=lambda item: item["id"])
+    ordered.extend(cables)
+    return ordered
+
+
+def _location_place(places, located, row, slots, definitions, missing: list[str]) -> None:
+    identity = str(row.foundation_id)
+    if identity.strip().casefold() == "oss":
+        return
+    place = located.get(identity)
+    if place is None or place.easting_m is None or place.northing_m is None:
+        label = f"{_package(row)} {identity}"
+        if label not in missing:
+            missing.append(label)
+        return
+    key = identity.casefold()
+    entry = places.get(key)
+    if entry is None:
+        entry = {
+            "id": identity,
+            "kind": "location",
+            "x": float(place.easting_m),
+            "y": float(place.northing_m),
+            "slices": [],
+        }
+        places[key] = entry
+    entry["slices"].extend(_slices(slots.get(row.installation_sequence), definitions))
+
+
+def _cable_places(run, rows, slots, missing: list[str]) -> list[dict[str, Any]]:
+    coordinates: dict[str, tuple[float, float]] = {}
+    for row in run.dataset_version.foundations.all():
+        if row.easting_m is None or row.northing_m is None:
+            continue
+        coordinates[row.foundation_id.casefold()] = (float(row.easting_m), float(row.northing_m))
+    for row in run.dataset_version.wtg_locations.all():
+        if row.easting_m is None or row.northing_m is None:
+            continue
+        coordinates.setdefault(row.wtg_id.casefold(), (float(row.easting_m), float(row.northing_m)))
+    stored = {row.cable_id.casefold(): row for row in run.dataset_version.cables.all()}
+    places = []
+    for row in rows:
+        slivers = _slices(slots.get(row.installation_sequence), _CABLE_SLICES)
+        if not slivers:
+            continue
+        cable = stored.get(str(row.foundation_id).casefold())
+        start = coordinates.get(cable.start_location_id.casefold()) if cable is not None else None
+        end = coordinates.get(cable.end_location_id.casefold()) if cable is not None else None
+        if start is None or end is None:
+            label = f"IAC {row.foundation_id}"
+            if label not in missing:
+                missing.append(label)
+            continue
+        places.append(
+            {
+                "id": row.foundation_id,
+                "kind": "cable",
+                "x": (start[0] + end[0]) / 2,
+                "y": (start[1] + end[1]) / 2,
+                "slices": slivers,
+            }
+        )
+    places.sort(key=lambda item: item["id"])
+    return places
+
+
+def _slices(slot, definitions) -> list[dict[str, Any]]:
+    if slot is None:
+        return []
+    slivers = []
+    for label, color, start_name, end_name in definitions:
+        start = getattr(slot, start_name, None)
+        end = getattr(slot, end_name, None)
+        if start is None or end is None or end <= start:
+            continue
+        slivers.append({"label": label, "color": color, "start": _ms(start), "end": _ms(end)})
+    return slivers
 
 
 def _oss_labels(run: OptimisationRun) -> list[dict[str, Any]]:

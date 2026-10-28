@@ -1,31 +1,39 @@
-/* Calendar timelapse. FOU circles, WTG squares. Within-trip legs only. */
+/* Calendar timelapse. One pizza per location and one per cable. No route lines. */
 (function () {
   var node = document.getElementById("timelapse-data");
   var svg = document.getElementById("timelapse-map");
   if (!node || !svg) return;
   var payload = JSON.parse(node.textContent);
-  var data = payload.activities || [];
+  var places = payload.places || [];
   var labels = payload.labels || [];
-  if (!data.length) return;
+  if (!places.length) return;
   var origin = payload.origin;
   var horizon = payload.horizon;
   var NS = "http://www.w3.org/2000/svg";
   var DAY = 86400000;
-  var packageColor = { FOU: "#1f77b4", IAC: "#2ca02c", WTG: "#ff7f0e" };
-  var dormant = "#b7c0ca";
   var time = origin;
   var playing = true;
   var timer = null;
   var delay = 400;
   var pace = DAY;
   var sliderMax = 1000;
-  var layout = project(data);
+  var layout = project(places);
+  var sliceOrder = [
+    "MP Installed",
+    "S St Installed",
+    "Filter Layer",
+    "Armour Layer",
+    "IAC Lay",
+    "IAC Burial",
+    "WTG Installed",
+    "WTG Commissioned"
+  ];
 
   function el(tag, attrs, text) {
-    var node = document.createElementNS(NS, tag);
-    Object.keys(attrs).forEach(function (key) { node.setAttribute(key, attrs[key]); });
-    if (text) node.textContent = text;
-    return node;
+    var element = document.createElementNS(NS, tag);
+    Object.keys(attrs).forEach(function (key) { element.setAttribute(key, attrs[key]); });
+    if (text) element.textContent = text;
+    return element;
   }
 
   function project(points) {
@@ -34,10 +42,6 @@
     points.forEach(function (point) {
       xs.push(point.x);
       ys.push(point.y);
-      if (point.x2 != null && point.y2 != null) {
-        xs.push(point.x2);
-        ys.push(point.y2);
-      }
     });
     labels.forEach(function (label) {
       xs.push(label.x);
@@ -83,13 +87,6 @@
       + " " + pad(date.getUTCHours()) + ":" + pad(date.getUTCMinutes());
   }
 
-  function color(point) {
-    return packageColor[point.package] || packageColor.FOU;
-  }
-
-  function started(point) { return point.start <= time; }
-  function installing(point) { return point.start <= time && time < point.end; }
-
   function base() {
     svg.innerHTML = "";
     var xStep = stepSize(layout.maxX - layout.minX);
@@ -115,38 +112,61 @@
     }, "Northing [m]"));
   }
 
-  function groups() {
-    var grouped = {};
-    data.forEach(function (point) {
-      if (!grouped[point.package]) grouped[point.package] = [];
-      grouped[point.package].push(point);
-    });
-    Object.keys(grouped).forEach(function (packageName) {
-      grouped[packageName].sort(function (left, right) { return left.seq - right.seq; });
-    });
-    return grouped;
+  function wedge(cx, cy, radius, start, end) {
+    var x0 = cx + radius * Math.cos(start);
+    var y0 = cy + radius * Math.sin(start);
+    var x1 = cx + radius * Math.cos(end);
+    var y1 = cy + radius * Math.sin(end);
+    var large = end - start > Math.PI ? 1 : 0;
+    return "M " + cx + " " + cy + " L " + x0 + " " + y0
+      + " A " + radius + " " + radius + " 0 " + large + " 1 " + x1 + " " + y1 + " Z";
   }
 
-  function drawRoutes(points) {
-    var active = {};
-    points.forEach(function (point) {
-      if (started(point) && time < point.end) active[point.trip] = true;
-    });
-    var i;
-    for (i = 1; i < points.length; i += 1) {
-      var previous = points[i - 1];
-      var current = points[i];
-      if (previous.trip !== current.trip || !active[current.trip]) continue;
-      if (!started(previous) || !started(current)) continue;
-      svg.appendChild(el("line", {
-        x1: layout.X(previous.x), y1: layout.Y(previous.y),
-        x2: layout.X(current.x), y2: layout.Y(current.y),
-        class: "route",
-        stroke: color(current),
-        "stroke-width": 5,
-        opacity: 0.95
+  function titled(element, text) {
+    var title = document.createElementNS(NS, "title");
+    title.textContent = text;
+    element.appendChild(title);
+    return element;
+  }
+
+  function drawPizza(place) {
+    var slices = place.slices || [];
+    if (!slices.length) return;
+    var cx = layout.X(place.x);
+    var cy = layout.Y(place.y);
+    var radius = place.kind === "cable" ? 11 : 14;
+    var installing = false;
+    if (slices.length === 1) {
+      var only = slices[0];
+      installing = only.start <= time && time < only.end;
+      svg.appendChild(titled(el("circle", {
+        cx: cx, cy: cy, r: radius,
+        fill: time >= only.end ? only.color : "#ffffff",
+        stroke: "#c5ced6", "stroke-width": 1
+      }), only.label));
+    } else {
+      slices.forEach(function (slice, index) {
+        if (slice.start <= time && time < slice.end) installing = true;
+        var start = -Math.PI / 2 + (index * 2 * Math.PI) / slices.length;
+        var end = -Math.PI / 2 + ((index + 1) * 2 * Math.PI) / slices.length;
+        svg.appendChild(titled(el("path", {
+          d: wedge(cx, cy, radius, start, end),
+          fill: time >= slice.end ? slice.color : "#ffffff",
+          stroke: "#ffffff", "stroke-width": 1
+        }), slice.label));
+      });
+      svg.appendChild(el("circle", {
+        cx: cx, cy: cy, r: radius, fill: "none", stroke: "#c5ced6", "stroke-width": 1
       }));
     }
+    if (installing) {
+      svg.appendChild(el("circle", {
+        cx: cx, cy: cy, r: radius + 5, fill: "none", stroke: "#172033", "stroke-width": 3
+      }));
+    }
+    svg.appendChild(el("text", {
+      x: cx + radius + 6, y: cy + 4, "text-anchor": "start", class: "label"
+    }, place.id));
   }
 
   function drawLabels() {
@@ -158,99 +178,49 @@
     });
   }
 
-  function drawCables() {
-    data.forEach(function (point) {
-      if (point.package !== "IAC" || point.x2 == null || point.y2 == null) return;
-      if (time < point.start) return;
-      var finished = time >= point.end;
-      svg.appendChild(el("line", {
-        x1: layout.X(point.x), y1: layout.Y(point.y),
-        x2: layout.X(point.x2), y2: layout.Y(point.y2),
-        class: "route",
-        stroke: finished ? dormant : packageColor.IAC,
-        "stroke-width": 4,
-        opacity: finished ? 0.65 : 0.95
-      }));
+  function counts() {
+    var seen = {};
+    places.forEach(function (place) {
+      place.slices.forEach(function (slice) {
+        if (!seen[slice.label]) seen[slice.label] = { color: slice.color, total: 0, done: 0 };
+        seen[slice.label].total += 1;
+        if (time >= slice.end) seen[slice.label].done += 1;
+      });
     });
+    return seen;
   }
 
-  function locations() {
-    var byId = {};
-    data.forEach(function (point) {
-      if (point.package === "IAC") return;
-      var place = byId[point.id];
-      if (!place) {
-        place = { id: point.id, x: point.x, y: point.y, fou: null, wtg: null };
-        byId[point.id] = place;
-      }
-      if (point.package === "WTG") place.wtg = point;
-      else place.fou = point;
-      if (point.package !== "WTG") {
-        place.x = point.x;
-        place.y = point.y;
-      }
-    });
-    return Object.keys(byId).map(function (id) { return byId[id]; });
-  }
-
-  function drawLocation(place) {
-    var fouDone = place.fou && started(place.fou);
-    var wtgDone = place.wtg && started(place.wtg);
-    var on = (place.fou && installing(place.fou)) || (place.wtg && installing(place.wtg));
-    var fill = dormant;
-    if (wtgDone) fill = packageColor.WTG;
-    else if (fouDone) fill = packageColor.FOU;
-    var px = layout.X(place.x);
-    var py = layout.Y(place.y);
-    if (wtgDone) {
-      var side = on ? 16 : 10;
-      svg.appendChild(el("rect", {
-        x: px - side / 2, y: py - side / 2, width: side, height: side,
-        class: "point", fill: fill
-      }));
-    } else {
-      svg.appendChild(el("circle", {
-        cx: px, cy: py, r: on ? 8 : 5, class: "point", fill: fill
-      }));
-    }
-    if (on) {
-      svg.appendChild(el("circle", {
-        cx: px, cy: py, r: 16, fill: "none", stroke: fill, "stroke-width": 3, opacity: 0.85
-      }));
-    }
-    var seq = (place.fou && place.fou.seq) || (place.wtg && place.wtg.seq) || 1;
-    var dx = seq % 2 ? 14 : -14;
-    var anchor = seq % 2 ? "start" : "end";
-    var installed = fouDone || wtgDone;
-    var nameSize = installed ? 16 : 12;
-    svg.appendChild(el("text", {
-      x: px + dx, y: py - 12, "text-anchor": anchor, class: "label",
-      style: "font-size:" + nameSize + "px"
-    }, place.id));
-    var lines = [];
-    if (fouDone) lines.push("#" + place.fou.seq + " T" + place.fou.trip);
-    if (wtgDone) lines.push("#" + place.wtg.seq + " T" + place.wtg.trip);
-    lines.forEach(function (line, index) {
-      svg.appendChild(el("text", {
-        x: px + dx, y: py + 18 + index * 14, "text-anchor": anchor, class: "label",
-        style: "font-size:12px"
-      }, line));
+  function legend() {
+    var host = document.getElementById("timelapse-legend");
+    if (!host) return;
+    host.textContent = "";
+    var seen = counts();
+    sliceOrder.forEach(function (label) {
+      var item = seen[label];
+      if (!item) return;
+      var row = document.createElement("span");
+      var swatch = document.createElement("span");
+      swatch.style.display = "inline-block";
+      swatch.style.width = "0.75em";
+      swatch.style.height = "0.75em";
+      swatch.style.marginRight = "0.35em";
+      swatch.style.background = item.color;
+      swatch.style.verticalAlign = "middle";
+      row.appendChild(swatch);
+      row.appendChild(document.createTextNode(label + " " + item.done + "/" + item.total));
+      host.appendChild(row);
     });
   }
 
   function statusText() {
     var text = formatDate(time);
     var names = [];
-    data.forEach(function (point) {
-      if (installing(point)) names.push(point.package + " " + point.id);
+    places.forEach(function (place) {
+      place.slices.forEach(function (slice) {
+        if (slice.start <= time && time < slice.end) names.push(slice.label + " " + place.id);
+      });
     });
-    if (names.length) text += " · Installing " + names.join(", ");
-    ["FOU", "IAC", "WTG"].forEach(function (packageName) {
-      var rows = data.filter(function (point) { return point.package === packageName; });
-      if (!rows.length) return;
-      var complete = rows.filter(function (point) { return time >= point.end; }).length;
-      text += " · " + packageName + " " + complete + "/" + rows.length + " complete";
-    });
+    if (names.length) text += " · " + names.join(", ");
     return text;
   }
 
@@ -261,30 +231,29 @@
 
   function draw() {
     base();
-    var grouped = groups();
-    Object.keys(grouped).forEach(function (packageName) {
-      if (packageName === "IAC") return;
-      drawRoutes(grouped[packageName]);
-    });
-    drawCables();
     drawLabels();
-    locations().forEach(drawLocation);
+    places.forEach(drawPizza);
+    legend();
     document.getElementById("timelapse-status").textContent = statusText();
     document.getElementById("timelapse-slider").value = String(sliderValue());
   }
 
   function nextStart(after) {
     var found = null;
-    data.forEach(function (point) {
-      if (point.start > after && (found === null || point.start < found)) found = point.start;
+    places.forEach(function (place) {
+      place.slices.forEach(function (slice) {
+        if (slice.start > after && (found === null || slice.start < found)) found = slice.start;
+      });
     });
     return found;
   }
 
   function previousStart(before) {
     var found = null;
-    data.forEach(function (point) {
-      if (point.start < before && (found === null || point.start > found)) found = point.start;
+    places.forEach(function (place) {
+      place.slices.forEach(function (slice) {
+        if (slice.start < before && (found === null || slice.start > found)) found = slice.start;
+      });
     });
     return found;
   }

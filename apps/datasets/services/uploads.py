@@ -143,10 +143,20 @@ def create_dataset_version(
                     slot=item.slot,
                     fou_p50_start=item.fou_p50_start,
                     fou_p50_end=item.fou_p50_end,
+                    sst_p50_start=item.sst_p50_start,
+                    sst_p50_end=item.sst_p50_end,
+                    filter_p50_start=item.filter_p50_start,
+                    filter_p50_end=item.filter_p50_end,
+                    armour_p50_start=item.armour_p50_start,
+                    armour_p50_end=item.armour_p50_end,
                     iac_p50_start=item.iac_p50_start,
                     iac_p50_end=item.iac_p50_end,
+                    burial_p50_start=item.burial_p50_start,
+                    burial_p50_end=item.burial_p50_end,
                     wtg_p50_start=item.wtg_p50_start,
                     wtg_p50_end=item.wtg_p50_end,
+                    commissioning_p50_start=item.commissioning_p50_start,
+                    commissioning_p50_end=item.commissioning_p50_end,
                 )
                 for item in parsed.programme
             ]
