@@ -10,9 +10,11 @@ from typing import Any
 from apps.constraints.services.matching import (
     ORDERING_ATTRIBUTES,
     column_state,
+    loop_blocks,
     matching_foundations,
 )
 from apps.constraints.services.parameters import validate_parameters
+from apps.optimisation.services.buffer import buffer_problem
 from apps.optimisation.services.geometry import (
     required_trips,
     sequence_positions_for_trip,
@@ -42,6 +44,7 @@ def find_programme_conflicts(
     vessel: VesselConfig,
     constraints: list[ConstraintInput],
     columns_present: set[str],
+    programme: dict | None = None,
 ) -> list[str]:
     """Check each package with its own trip limit. An empty package is skipped."""
 
@@ -76,6 +79,17 @@ def find_programme_conflicts(
             messages.append(f"{label}: {message}")
     if not any_included:
         messages.append("No included FOU, IAC, or WTG activities are available to sequence.")
+    messages.extend(
+        buffer_problem(
+            constraints,
+            {
+                "FOU": [item for item in foundations if item.include],
+                "IAC": [item for item in cables if item.include],
+                "WTG": [item for item in turbines if item.include],
+            },
+            programme or {},
+        )
+    )
     return _unique(messages)
 
 
@@ -165,6 +179,7 @@ def find_conflicts(
             separate_pairs,
             rule_limits,
             conflicts,
+            active,
         )
 
     _evaluate_bounds(
@@ -229,6 +244,7 @@ def _apply_hard(
     separate_pairs: list[tuple[str, str, str]],
     rule_limits: dict[tuple[Any, ...], dict[str, int]],
     conflicts: list[str],
+    constraints: list[ConstraintInput] | None = None,
 ) -> None:
     parameters = constraint.parameters
     kind = constraint.constraint_type
@@ -236,6 +252,14 @@ def _apply_hard(
     count = len(included)
     trips = required_trips(count, capacity)
 
+    if kind == "loop_id_sequence":
+        for indexes in loop_blocks(included, constraints):
+            if len(indexes) > capacity:
+                conflicts.append(
+                    f"{constraint.name} keeps {len(indexes)} cables with one Loop ID together "
+                    f"inside one trip, above the trip capacity of {capacity}."
+                )
+        return
     if kind == "maximum_trip_payload":
         hard_payloads.append((constraint.name, Decimal(str(parameters["maximum_payload_t"]))))
         return

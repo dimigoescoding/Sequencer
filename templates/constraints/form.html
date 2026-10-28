@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}{{ type_label }} — {{ scenario.name }}{% endblock %}
+{% block title %}{% if constraint %}Edit {{ constraint.name }}{% else %}{{ type_label }}{% endif %} — {{ scenario.name }}{% endblock %}
 {% block content %}
 {% include "partials/project_nav.html" with nav="scenarios" %}
 {% include "partials/scenario_nav.html" with snav="constraints" %}
-<h1 class="h3">{{ type_label }}</h1>
+<h1 class="h3">{% if constraint %}Edit {{ constraint.name }}{% else %}{{ type_label }}{% endif %}</h1>
 <p>{{ type_summary }}</p>
 {% if constraint_type == "maximum_trip_payload" %}
   <div class="alert alert-warning" id="payload-soft-warning">A soft payload limit permits an overloaded result. The excess is penalised. It is not converted back to a hard limit.</div>
@@ -13,6 +13,12 @@
 {% endif %}
 {% if constraint_type == "earliest_sequence" %}
   <div class="alert alert-secondary">Choose one location or an attribute. The number is the first trip those locations may be installed. Enter 2 to keep them out of the first trip. For a Yes/No column such as Shallow location, use equals and YES.</div>
+{% endif %}
+{% if constraint_type == "loop_id_sequence" %}
+  <div class="alert alert-secondary">Cables that share a Loop ID follow the IAC sheet, one after another, and stay inside one trip. A hard rule that installs some of them first takes those cables out. The cables that remain stay one uninterrupted block. A different Loop ID may come before or after that block. A blank Loop ID is not grouped. A hard rule that cannot be met makes the run invalid. A soft rule penalises a break and keeps the run valid.</div>
+{% endif %}
+{% if constraint_type == "package_buffer" %}
+  <div class="alert alert-secondary">IAC waits for the FOU end at the same location. WTG waits until every cable that touches that location is complete. IAC starts at a location when the first of those cables starts. The gap uses the programme P50 dates of each sequence slot. A location missing from the previous package is left out. Maximize has no day limit. A hard minimum must be met. A soft minimum penalises the shortfall by severity.</div>
 {% endif %}
 <form method="post" class="col-lg-8">
   {% csrf_token %}
@@ -43,7 +49,26 @@
     })();
   </script>
   {% endif %}
-  <button class="btn btn-primary" type="submit">Save constraint</button>
+  {% if constraint_type == "package_buffer" %}
+  <script>
+    (function () {
+      var mode = document.getElementById("id_mode");
+      if (!mode) return;
+      function sync() {
+        var field = document.querySelector('[data-field="minimum_days"]');
+        if (!field) return;
+        var show = mode.value === "minimum";
+        field.hidden = !show;
+        field.querySelectorAll("input").forEach(function (input) {
+          input.disabled = !show;
+        });
+      }
+      mode.addEventListener("change", sync);
+      sync();
+    })();
+  </script>
+  {% endif %}
+  <button class="btn btn-primary" type="submit">{% if constraint %}Save changes{% else %}Save constraint{% endif %}</button>
   <a class="btn btn-link" href="{% url 'constraints:list' project.pk scenario.pk %}">Cancel</a>
 </form>
 {% endblock %}

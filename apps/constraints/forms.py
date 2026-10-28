@@ -56,6 +56,16 @@ class ConstraintForm(forms.Form):
         kwargs["initial"] = initial
         super().__init__(**kwargs)
         self._add_type_fields(foundation_ids, columns, vessel.max_foundations_per_trip)
+        if self.constraint_type == "loop_id_sequence":
+            self.fields["package"].choices = [("IAC", "IAC")]
+            self.fields["package"].initial = "IAC"
+            self.fields["package"].required = True
+            self.fields["package"].help_text = "Loop ID is read from the IAC sheet."
+        if self.constraint_type == "package_buffer":
+            self.fields["package"].choices = [("IAC", "IAC"), ("WTG", "WTG")]
+            self.fields["package"].initial = "IAC"
+            self.fields["package"].required = True
+            self.fields["package"].help_text = "IAC waits for FOU. WTG waits for IAC."
         apply_bootstrap(self)
 
     def _add_type_fields(
@@ -219,6 +229,22 @@ class ConstraintForm(forms.Form):
         if kind == "difficulty_progression":
             self.fields["applicable_start_trip"] = forms.IntegerField(min_value=1, initial=1)
             self.fields["applicable_end_trip"] = forms.IntegerField(min_value=1, initial=1)
+        if kind == "package_buffer":
+            self.fields["mode"] = forms.ChoiceField(
+                choices=[("minimum", "Minimum days"), ("maximize", "Maximize")],
+                label="Buffer",
+                help_text=(
+                    "Minimum keeps at least this many days between the previous package's end "
+                    "and this package's start. Maximize makes the smallest location gap as large "
+                    "as the programme dates allow, and does not take a day limit."
+                ),
+            )
+            self.fields["minimum_days"] = forms.IntegerField(
+                required=False,
+                min_value=0,
+                label="Minimum days",
+                help_text="Whole days of 24 hours. Used only when the buffer is a minimum.",
+            )
 
     def clean(self):
         cleaned = super().clean()
@@ -339,6 +365,14 @@ class ConstraintForm(forms.Form):
             }
         if kind == "minimise_within_trip_distance":
             return {"include_harbour_legs": False}
+        if kind == "loop_id_sequence":
+            return {"attribute": "Loop ID"}
+        if kind == "package_buffer":
+            if cleaned.get("mode") == "maximize":
+                return {"mode": "maximize"}
+            if cleaned.get("minimum_days") is None:
+                raise forms.ValidationError("Enter the minimum number of days.")
+            return {"mode": "minimum", "minimum_days": cleaned["minimum_days"]}
         if kind in {"matching_installed_first", "avoid_matching_in_first_trips"}:
             parameters = self._rule(cleaned)
             if kind == "avoid_matching_in_first_trips":
@@ -388,8 +422,13 @@ class ConstraintLevelForm(forms.Form):
         help_text="Required for a soft constraint, from 1 to 100. A hard constraint does not use a severity.",
     )
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(
+        self, *args, package_choices: list[tuple[str, str]] | None = None, **kwargs
+    ) -> None:
         super().__init__(*args, **kwargs)
+        if package_choices is not None:
+            self.fields["package"].choices = package_choices
+            self.fields["package"].help_text = "IAC waits for FOU. WTG waits for IAC."
         apply_bootstrap(self)
 
     def clean(self):
@@ -443,6 +482,8 @@ def _initial_parameters(constraint_type: str, parameters: dict) -> dict:
         "predecessor_foundation_id",
         "successor_foundation_id",
         "trip_count",
+        "mode",
+        "minimum_days",
     ):
         if parameters.get(key) not in (None, ""):
             initial[key] = parameters[key]

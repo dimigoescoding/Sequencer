@@ -67,7 +67,7 @@
     <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-2">
       <div>
         <h2 class="h5 mb-1">Installation sequence</h2>
-        <p class="small text-secondary mb-0">Easting/Northing · equal scale · calendar time · circle FOU · square WTG · no harbour or inter-trip legs{% if timelapse.within_trip %} · within-trip {{ timelapse.within_trip }}{% endif %}</p>
+        <p class="small text-secondary mb-0">Easting/Northing · equal scale · calendar time · circle FOU · line IAC · square WTG · no harbour or inter-trip legs{% if timelapse.within_trip %} · within-trip {{ timelapse.within_trip }}{% endif %}</p>
       </div>
     </div>
     {% if timelapse.activities %}
@@ -80,14 +80,14 @@
           <button type="button" id="timelapse-next">Step ▶</button>
           <label>Pace
             <select id="timelapse-speed">
-              <option value="1">1 day</option>
-              <option value="7" selected>1 week</option>
+              <option value="1" selected>1 day</option>
+              <option value="7">1 week</option>
               <option value="30">30 days</option>
               <option value="90">90 days</option>
             </select>
           </label>
           <input id="timelapse-slider" type="range" min="0" max="1000" value="0">
-          <span class="small text-secondary">One calendar for FOU and WTG. A location is highlighted from its P50 start until its P50 end. Step jumps to the next installation.</span>
+          <span class="small text-secondary">One calendar. An IAC line appears at its start, stays green until its finish, then remains grey. Step jumps to the next installation.</span>
           <button type="button" id="timelapse-fullscreen">Full screen</button>
         </div>
       </div>
@@ -106,20 +106,22 @@
       <div class="col-md-4"><input class="form-control" type="search" name="q" value="{{ request.GET.q }}" placeholder="Search Foundation_ID"></div>
       <div class="col-md-2"><button class="btn btn-outline-primary" type="submit">Search</button></div>
     </form>
-    {% if not page_obj.object_list %}<p class="empty-state">No sequence rows. An infeasible or blocked run does not invent an order.</p>{% else %}
+    {% if not sequence_rows %}<p class="empty-state">No sequence rows. An infeasible or blocked run does not invent an order.</p>{% else %}
       <div class="table-responsive"><table class="table table-sm">
         <thead><tr>
-          <th><a href="{% querystring tab='sequence' sort='installation_sequence' dir='asc' page=1 %}">Installation_Sequence</a></th>
-          <th><a href="{% querystring tab='sequence' sort='package' dir='asc' page=1 %}">Package</a></th>
-          <th><a href="{% querystring tab='sequence' sort='trip' dir='asc' page=1 %}">Trip</a></th>
+          <th><a href="{% querystring tab='sequence' sort='installation_sequence' dir='asc' %}">Installation_Sequence</a></th>
+          <th><a href="{% querystring tab='sequence' sort='package' dir='asc' %}">Package</a></th>
+          <th><a href="{% querystring tab='sequence' sort='trip' dir='asc' %}">Trip</a></th>
           <th>Vessel_Position</th>
-          <th><a href="{% querystring tab='sequence' sort='foundation_id' dir='asc' page=1 %}">Foundation_ID</a></th>
+          <th><a href="{% querystring tab='sequence' sort='foundation_id' dir='asc' %}">Foundation_ID</a></th>
+          <th>Buffer</th>
           <th>Weight_t</th><th>Trip_Total_Weight_t</th><th>Delivery_Sequence</th><th>Sequence_Deviation</th>
           <th>Delivery_Batch</th><th>Difficulty_Value</th><th>Punch_Through</th><th>Fixed_Trip</th><th>Fixed_Position</th>
           <th>Earliest_Sequence</th><th>Latest_Sequence</th><th>Hard_Constraint_Status</th><th>Soft_Penalty</th><th>Governing_Constraints</th><th>Notes</th>
         </tr></thead>
-        <tbody>{% for row in page_obj %}<tr>
+        <tbody>{% for row in sequence_rows %}<tr>
           <td>{{ row.installation_sequence }}</td><td>{{ row.package }}</td><td>{{ row.trip }}</td><td>{{ row.vessel_position }}</td><td>{{ row.foundation_id }}</td>
+          <td>{{ row.buffer_label }}</td>
           <td>{{ row.weight_t }}</td><td>{{ row.trip_total_weight_t }}</td><td>{{ row.delivery_sequence|default:"—" }}</td><td>{{ row.sequence_deviation|default:"—" }}</td>
           <td>{{ row.delivery_batch|default:"—" }}</td><td>{{ row.difficulty_value|default:"—" }}</td>
           <td>{% if row.punch_through is None %}—{% elif row.punch_through %}Yes{% else %}No{% endif %}</td>
@@ -129,7 +131,6 @@
           <td>{{ row.soft_penalty }}</td><td>{{ row.governing_constraints|default:"—" }}</td><td>{{ row.notes|default:"—" }}</td>
         </tr>{% endfor %}</tbody>
       </table></div>
-      {% include "partials/pagination.html" %}
     {% endif %}
   {% endif %}
 </div></div>

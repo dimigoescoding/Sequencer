@@ -382,6 +382,23 @@ def validate_parameters(
             errors.append(error)
         return errors
 
+    if constraint_type == "loop_id_sequence":
+        if "Loop ID" not in columns_present:
+            errors.append("Loop ID sequence requires the Loop ID column on the IAC sheet.")
+        return errors
+
+    if constraint_type == "package_buffer":
+        mode = parameters.get("mode")
+        if mode not in {"minimum", "maximize"}:
+            errors.append("Choose a minimum number of days or maximize.")
+            return errors
+        if mode == "maximize":
+            return errors
+        _days, error = _non_negative_int(parameters.get("minimum_days"), "Minimum days")
+        if error:
+            errors.append(error)
+        return errors
+
     if constraint_type == "minimise_within_trip_distance":
         if "Easting_m" not in columns_present or "Northing_m" not in columns_present:
             errors.append(

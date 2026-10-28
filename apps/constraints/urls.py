@@ -9,6 +9,7 @@ urlpatterns = [
     path("new/", views.constraint_choose, name="choose"),
     path("new/<slug:constraint_type>/", views.constraint_create, name="create"),
     path("<int:constraint_id>/edit/", views.constraint_edit, name="edit"),
+    path("<int:constraint_id>/copy/", views.constraint_copy, name="copy"),
     path("<int:constraint_id>/toggle/", views.constraint_toggle, name="toggle"),
     path("<int:constraint_id>/delete/", views.constraint_delete, name="delete"),
 ]

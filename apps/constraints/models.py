@@ -59,9 +59,17 @@ class Constraint(models.Model):
 
     @property
     def parameter_summary(self) -> str:
+        parameters = self.parameters_json or {}
+        if self.constraint_type == "loop_id_sequence":
+            return "Loop ID in IAC sheet order"
+        if self.constraint_type == "package_buffer":
+            if parameters.get("mode") == "maximize":
+                return "maximize"
+            if parameters.get("minimum_days") not in (None, ""):
+                return f"minimum {parameters['minimum_days']} days"
+            return ""
         if self.constraint_type != "earliest_sequence":
             return ""
-        parameters = self.parameters_json or {}
         if parameters.get("attribute"):
             parts = [str(parameters.get("attribute") or ""), str(parameters.get("operator") or "")]
             value = parameters.get("value")

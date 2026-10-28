@@ -30,6 +30,10 @@ def availability_reasons(
         reasons["difficulty_progression"] = (
             "Difficulty progression requires Difficulty_Value on every included foundation."
         )
+    if "Loop ID" not in columns_present:
+        reasons["loop_id_sequence"] = (
+            "Loop ID sequence requires the Loop ID column on the IAC sheet."
+        )
     if not state["Delivery_Sequence"]["complete"]:
         reasons["delivery_sequence_alignment"] = (
             "Delivery-sequence alignment requires Delivery_Sequence on every included foundation."

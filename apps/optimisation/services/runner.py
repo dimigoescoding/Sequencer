@@ -18,6 +18,7 @@ from apps.datasets.services.mapping import (
 )
 from apps.optimisation.models import OptimisationRun, SequenceResult, TripResult, ValidationResult
 from apps.optimisation.services.between_trips import optimise_trip_connections
+from apps.optimisation.services.buffer import apply_buffer_checks
 from apps.optimisation.services.conflicts import find_programme_conflicts
 from apps.optimisation.services.evaluation import evaluate, merge_evaluations
 from apps.optimisation.services.scaling import MAX_SOLVER_TIME_LIMIT_SECONDS, SOLVER_SEED
@@ -38,6 +39,28 @@ class SolveBusy(Exception):
 
 
 _solve_lock = threading.Lock()
+
+
+def _iac_buffer(constraints) -> bool:
+    return any(
+        item.active
+        and item.constraint_type == "package_buffer"
+        and str(getattr(item, "package", "") or "").strip().upper() == "IAC"
+        for item in constraints
+    )
+
+
+def _programme_calendar(dataset) -> dict:
+    if dataset is None:
+        return {}
+    calendar = {}
+    for slot in dataset.programme_slots.all():
+        calendar[int(slot.slot)] = {
+            "FOU": (slot.fou_p50_start, slot.fou_p50_end),
+            "IAC": (slot.iac_p50_start, slot.iac_p50_end),
+            "WTG": (slot.wtg_p50_start, slot.wtg_p50_end),
+        }
+    return calendar
 
 
 def vessel_config(settings: VesselSettings) -> VesselConfig:
@@ -105,7 +128,15 @@ def blocking_messages(scenario: Scenario) -> list[str]:
     foundations, cables, turbines, vessel, constraints, columns = programme_context(scenario)
     if not dataset.error_count:
         messages.extend(
-            find_programme_conflicts(foundations, cables, turbines, vessel, constraints, columns)
+            find_programme_conflicts(
+                foundations,
+                cables,
+                turbines,
+                vessel,
+                constraints,
+                columns,
+                _programme_calendar(dataset),
+            )
         )
     return messages
 
@@ -124,15 +155,16 @@ def _execute(scenario: Scenario) -> OptimisationRun:
     if messages:
         raise SolveBlocked(messages)
     foundations, cables, turbines, vessel, constraints, _columns = programme_context(scenario)
+    programme = _programme_calendar(scenario.dataset_version)
     active = [item for item in constraints if item.active]
     started = timezone.now()
     campaigns = []
     try:
         status, objective, runtime, message, campaigns = solve_programme(
-            foundations, cables, turbines, vessel, constraints
+            foundations, cables, turbines, vessel, constraints, programme
         )
         for campaign in campaigns:
-            if campaign.package == "FOU" and campaign.order:
+            if campaign.package == "FOU" and campaign.order and not _iac_buffer(constraints):
                 campaign.order = optimise_trip_connections(
                     campaign.order, foundations, campaign.vessel, campaign.constraints
                 )
@@ -162,6 +194,7 @@ def _execute(scenario: Scenario) -> OptimisationRun:
                 for campaign in solved
             ]
         )
+        apply_buffer_checks(evaluation, solved, constraints, programme)
         if evaluation.validation_status != "Passed":
             run_status = "INVALID"
             message = (

@@ -5,6 +5,7 @@
   if (!node || !svg) return;
   var payload = JSON.parse(node.textContent);
   var data = payload.activities || [];
+  var labels = payload.labels || [];
   if (!data.length) return;
   var origin = payload.origin;
   var horizon = payload.horizon;
@@ -16,7 +17,7 @@
   var playing = true;
   var timer = null;
   var delay = 400;
-  var pace = 7 * DAY;
+  var pace = DAY;
   var sliderMax = 1000;
   var layout = project(data);
 
@@ -28,10 +29,24 @@
   }
 
   function project(points) {
-    var minX = Math.min.apply(null, points.map(function (p) { return p.x; }));
-    var maxX = Math.max.apply(null, points.map(function (p) { return p.x; }));
-    var minY = Math.min.apply(null, points.map(function (p) { return p.y; }));
-    var maxY = Math.max.apply(null, points.map(function (p) { return p.y; }));
+    var xs = [];
+    var ys = [];
+    points.forEach(function (point) {
+      xs.push(point.x);
+      ys.push(point.y);
+      if (point.x2 != null && point.y2 != null) {
+        xs.push(point.x2);
+        ys.push(point.y2);
+      }
+    });
+    labels.forEach(function (label) {
+      xs.push(label.x);
+      ys.push(label.y);
+    });
+    var minX = Math.min.apply(null, xs);
+    var maxX = Math.max.apply(null, xs);
+    var minY = Math.min.apply(null, ys);
+    var maxY = Math.max.apply(null, ys);
     if (minX === maxX) { minX -= 1; maxX += 1; }
     if (minY === maxY) { minY -= 1; maxY += 1; }
     var plotW = 1360;
@@ -134,12 +149,60 @@
     }
   }
 
-  function drawPoint(point) {
-    var px = layout.X(point.x);
-    var py = layout.Y(point.y);
-    var on = installing(point);
-    var fill = started(point) ? color(point) : dormant;
-    if (point.marker === "square") {
+  function drawLabels() {
+    labels.forEach(function (label) {
+      svg.appendChild(el("text", {
+        x: layout.X(label.x), y: layout.Y(label.y),
+        "text-anchor": "middle", class: "label"
+      }, label.id));
+    });
+  }
+
+  function drawCables() {
+    data.forEach(function (point) {
+      if (point.package !== "IAC" || point.x2 == null || point.y2 == null) return;
+      if (time < point.start) return;
+      var finished = time >= point.end;
+      svg.appendChild(el("line", {
+        x1: layout.X(point.x), y1: layout.Y(point.y),
+        x2: layout.X(point.x2), y2: layout.Y(point.y2),
+        class: "route",
+        stroke: finished ? dormant : packageColor.IAC,
+        "stroke-width": 4,
+        opacity: finished ? 0.65 : 0.95
+      }));
+    });
+  }
+
+  function locations() {
+    var byId = {};
+    data.forEach(function (point) {
+      if (point.package === "IAC") return;
+      var place = byId[point.id];
+      if (!place) {
+        place = { id: point.id, x: point.x, y: point.y, fou: null, wtg: null };
+        byId[point.id] = place;
+      }
+      if (point.package === "WTG") place.wtg = point;
+      else place.fou = point;
+      if (point.package !== "WTG") {
+        place.x = point.x;
+        place.y = point.y;
+      }
+    });
+    return Object.keys(byId).map(function (id) { return byId[id]; });
+  }
+
+  function drawLocation(place) {
+    var fouDone = place.fou && started(place.fou);
+    var wtgDone = place.wtg && started(place.wtg);
+    var on = (place.fou && installing(place.fou)) || (place.wtg && installing(place.wtg));
+    var fill = dormant;
+    if (wtgDone) fill = packageColor.WTG;
+    else if (fouDone) fill = packageColor.FOU;
+    var px = layout.X(place.x);
+    var py = layout.Y(place.y);
+    if (wtgDone) {
       var side = on ? 16 : 10;
       svg.appendChild(el("rect", {
         x: px - side / 2, y: py - side / 2, width: side, height: side,
@@ -150,16 +213,29 @@
         cx: px, cy: py, r: on ? 8 : 5, class: "point", fill: fill
       }));
     }
-    if (!on) return;
-    svg.appendChild(el("circle", {
-      cx: px, cy: py, r: 16, fill: "none", stroke: fill, "stroke-width": 3, opacity: 0.85
-    }));
-    var dx = point.seq % 2 ? 12 : -12;
-    var anchor = point.seq % 2 ? "start" : "end";
-    var dy = point.package === "WTG" ? 18 : -12;
+    if (on) {
+      svg.appendChild(el("circle", {
+        cx: px, cy: py, r: 16, fill: "none", stroke: fill, "stroke-width": 3, opacity: 0.85
+      }));
+    }
+    var seq = (place.fou && place.fou.seq) || (place.wtg && place.wtg.seq) || 1;
+    var dx = seq % 2 ? 14 : -14;
+    var anchor = seq % 2 ? "start" : "end";
+    var installed = fouDone || wtgDone;
+    var nameSize = installed ? 16 : 12;
     svg.appendChild(el("text", {
-      x: px + dx, y: py + dy, "text-anchor": anchor, class: "label"
-    }, point.package + " " + point.id + "  #" + point.seq + "  T" + point.trip));
+      x: px + dx, y: py - 12, "text-anchor": anchor, class: "label",
+      style: "font-size:" + nameSize + "px"
+    }, place.id));
+    var lines = [];
+    if (fouDone) lines.push("#" + place.fou.seq + " T" + place.fou.trip);
+    if (wtgDone) lines.push("#" + place.wtg.seq + " T" + place.wtg.trip);
+    lines.forEach(function (line, index) {
+      svg.appendChild(el("text", {
+        x: px + dx, y: py + 18 + index * 14, "text-anchor": anchor, class: "label",
+        style: "font-size:12px"
+      }, line));
+    });
   }
 
   function statusText() {
@@ -169,7 +245,7 @@
       if (installing(point)) names.push(point.package + " " + point.id);
     });
     if (names.length) text += " · Installing " + names.join(", ");
-    ["FOU", "WTG"].forEach(function (packageName) {
+    ["FOU", "IAC", "WTG"].forEach(function (packageName) {
       var rows = data.filter(function (point) { return point.package === packageName; });
       if (!rows.length) return;
       var complete = rows.filter(function (point) { return time >= point.end; }).length;
@@ -186,8 +262,13 @@
   function draw() {
     base();
     var grouped = groups();
-    Object.keys(grouped).forEach(function (packageName) { drawRoutes(grouped[packageName]); });
-    data.forEach(drawPoint);
+    Object.keys(grouped).forEach(function (packageName) {
+      if (packageName === "IAC") return;
+      drawRoutes(grouped[packageName]);
+    });
+    drawCables();
+    drawLabels();
+    locations().forEach(drawLocation);
     document.getElementById("timelapse-status").textContent = statusText();
     document.getElementById("timelapse-slider").value = String(sliderValue());
   }
