@@ -14,8 +14,8 @@
   var time = origin;
   var playing = true;
   var timer = null;
-  var delay = 400;
-  var pace = DAY;
+  var speed = 1;
+  var lastTick = 0;
   var sliderMax = 1000;
   var layout = project(places);
   var laidGrey = "#b7c0ca";
@@ -315,20 +315,23 @@
   }
 
   function advance() {
+    var now = performance.now();
+    var elapsed = Math.min(Math.max(now - lastTick, 0), 250);
+    lastTick = now;
     if (time >= horizon) {
       time = origin;
       draw();
       return;
     }
-    var boundary = nextStart(time);
-    var candidate = Math.min(horizon, time + pace);
-    time = boundary !== null && boundary < candidate ? boundary : candidate;
+    time = Math.min(horizon, time + elapsed * speed * DAY / 1000);
     draw();
   }
 
   function schedule() {
     clearInterval(timer);
-    if (playing) timer = setInterval(advance, delay);
+    if (!playing) return;
+    lastTick = performance.now();
+    timer = setInterval(advance, 100);
   }
 
   document.getElementById("timelapse-play").onclick = function () {
@@ -347,7 +350,8 @@
     draw();
   };
   document.getElementById("timelapse-speed").onchange = function (event) {
-    pace = (+event.target.value) * DAY;
+    speed = +event.target.value;
+    lastTick = performance.now();
   };
   var slider = document.getElementById("timelapse-slider");
   slider.max = String(sliderMax);
