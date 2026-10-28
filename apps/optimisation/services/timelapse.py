@@ -203,7 +203,7 @@ def _slices(slot, definitions) -> list[dict[str, Any]]:
     for label, color, start_name, end_name in definitions:
         start = getattr(slot, start_name, None)
         end = getattr(slot, end_name, None)
-        if start is None or end is None or end <= start:
+        if start is None or end is None or end < start:
             continue
         slivers.append({"label": label, "color": color, "start": _ms(start), "end": _ms(end)})
     return slivers
