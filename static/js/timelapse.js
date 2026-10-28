@@ -1,4 +1,4 @@
-/* Calendar timelapse. One pizza per location and one per cable. Cable lines only. */
+/* Calendar timelapse. One pizza per location. Cable lines only. */
 (function () {
   var node = document.getElementById("timelapse-data");
   var svg = document.getElementById("timelapse-map");
@@ -22,7 +22,7 @@
   var buriedGrey = "#5c6770";
   var sliceOrder = [
     "MP Installed",
-    "S St Installed",
+    "SSt Installed",
     "Filter Layer",
     "Armour Layer",
     "IAC Lay",
@@ -140,11 +140,12 @@
   }
 
   function drawPizza(place) {
+    if (place.kind === "cable") return;
     var slices = place.slices || [];
     if (!slices.length) return;
     var cx = layout.X(place.x);
     var cy = layout.Y(place.y);
-    var radius = place.kind === "cable" ? 11 : 14;
+    var radius = 14;
     var installing = false;
     if (slices.length === 1) {
       var only = slices[0];
@@ -169,16 +170,14 @@
         cx: cx, cy: cy, r: radius, fill: "none", stroke: "#c5ced6", "stroke-width": 1
       }));
     }
-    if (installing && place.kind !== "cable") {
+    if (installing) {
       svg.appendChild(el("circle", {
         cx: cx, cy: cy, r: radius + 5, fill: "none", stroke: "#172033", "stroke-width": 3
       }));
     }
-    if (place.kind !== "cable") {
-      svg.appendChild(el("text", {
-        x: cx + radius + 6, y: cy + 4, "text-anchor": "start", class: "label"
-      }, place.id));
-    }
+    svg.appendChild(el("text", {
+      x: cx + radius + 6, y: cy + 4, "text-anchor": "start", class: "label"
+    }, place.id));
   }
 
   function sliceNamed(place, label) {

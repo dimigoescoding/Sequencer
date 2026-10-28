@@ -42,7 +42,7 @@
     {% endif %}
     {% block content %}{% endblock %}
   </main>
-  <footer class="site-footer container page-wrap pb-4">Sequencer MVP 1 — foundation installation sequences. Constraints are defined by the user.</footer>
+  <footer class="site-footer container page-wrap pb-4">{% block footer %}Sequencer MVP 1 — foundation installation sequences. Constraints are defined by the user.{% endblock %}</footer>
   <script src="{% static 'vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
   <script src="{% static 'js/sequencer.js' %}"></script>
 </body>

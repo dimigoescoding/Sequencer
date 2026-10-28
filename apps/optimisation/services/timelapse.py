@@ -5,10 +5,9 @@ slot 1 of that package, sequence 2 uses slot 2, and so on. A slot is not a
 location id. SSt installation, filter layer, and armour layer use the FOU
 sequence. IAC burial uses the IAC sequence. WTG commissioning uses the WTG
 sequence. A slice is omitted when its dates are blank. The OSS id is a label.
-A cable is a line between its two locations and a pizza at the midpoint. The line
-uses the lay colour during IAC lay, then grey, the burial colour during IAC
-burial, then a darker grey. The pizza fills with those same colours and has no
-name. Coordinates come from the dataset stored with the run.
+A cable is a line between its two locations, with no pizza. The line uses the
+lay colour during IAC lay, then grey, the burial colour during IAC burial, then
+a darker grey. Coordinates come from the dataset stored with the run.
 """
 
 from __future__ import annotations
@@ -28,7 +27,7 @@ _WINDOWS = {
 }
 _LOCATION_SLICES = (
     ("MP Installed", "#1f77b4", "fou_p50_start", "fou_p50_end"),
-    ("S St Installed", "#9467bd", "sst_p50_start", "sst_p50_end"),
+    ("SSt Installed", "#9467bd", "sst_p50_start", "sst_p50_end"),
     ("Filter Layer", "#17becf", "filter_p50_start", "filter_p50_end"),
     ("Armour Layer", "#8c564b", "armour_p50_start", "armour_p50_end"),
 )
@@ -126,7 +125,7 @@ def timelapse_payload(run: OptimisationRun) -> dict[str, Any]:
 
 
 def _places(run, grouped, slots, located, missing: list[str]) -> list[dict[str, Any]]:
-    """One pizza per sequenced location, and one per cable that has lay or burial dates."""
+    """One pizza per sequenced location. Cables stay in the list so their lines can be drawn."""
     places: dict[str, dict[str, Any]] = {}
     for row in grouped["FOU"]:
         _location_place(places, located["FOU"], row, slots, _LOCATION_SLICES, missing)
