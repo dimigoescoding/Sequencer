@@ -1,4 +1,4 @@
-/* Calendar timelapse. One pizza per location and one per cable. Cable lines only. */
+/* Calendar timelapse. One pizza per location. Cable lines only. */
 (function () {
   var node = document.getElementById("timelapse-data");
   var svg = document.getElementById("timelapse-map");
@@ -14,15 +14,15 @@
   var time = origin;
   var playing = true;
   var timer = null;
-  var delay = 400;
-  var pace = DAY;
+  var speed = 1;
+  var lastTick = 0;
   var sliderMax = 1000;
   var layout = project(places);
   var laidGrey = "#b7c0ca";
   var buriedGrey = "#5c6770";
   var sliceOrder = [
     "MP Installed",
-    "S St Installed",
+    "SSt Installed",
     "Filter Layer",
     "Armour Layer",
     "IAC Lay",
@@ -140,11 +140,12 @@
   }
 
   function drawPizza(place) {
+    if (place.kind === "cable") return;
     var slices = place.slices || [];
     if (!slices.length) return;
     var cx = layout.X(place.x);
     var cy = layout.Y(place.y);
-    var radius = place.kind === "cable" ? 11 : 14;
+    var radius = 14;
     var installing = false;
     if (slices.length === 1) {
       var only = slices[0];
@@ -169,16 +170,14 @@
         cx: cx, cy: cy, r: radius, fill: "none", stroke: "#c5ced6", "stroke-width": 1
       }));
     }
-    if (installing && place.kind !== "cable") {
+    if (installing) {
       svg.appendChild(el("circle", {
         cx: cx, cy: cy, r: radius + 5, fill: "none", stroke: "#172033", "stroke-width": 3
       }));
     }
-    if (place.kind !== "cable") {
-      svg.appendChild(el("text", {
-        x: cx + radius + 6, y: cy + 4, "text-anchor": "start", class: "label"
-      }, place.id));
-    }
+    svg.appendChild(el("text", {
+      x: cx + radius + 6, y: cy + 4, "text-anchor": "start", class: "label"
+    }, place.id));
   }
 
   function sliceNamed(place, label) {
@@ -316,20 +315,23 @@
   }
 
   function advance() {
+    var now = performance.now();
+    var elapsed = Math.min(Math.max(now - lastTick, 0), 250);
+    lastTick = now;
     if (time >= horizon) {
       time = origin;
       draw();
       return;
     }
-    var boundary = nextStart(time);
-    var candidate = Math.min(horizon, time + pace);
-    time = boundary !== null && boundary < candidate ? boundary : candidate;
+    time = Math.min(horizon, time + elapsed * speed * DAY / 1000);
     draw();
   }
 
   function schedule() {
     clearInterval(timer);
-    if (playing) timer = setInterval(advance, delay);
+    if (!playing) return;
+    lastTick = performance.now();
+    timer = setInterval(advance, 100);
   }
 
   document.getElementById("timelapse-play").onclick = function () {
@@ -348,7 +350,8 @@
     draw();
   };
   document.getElementById("timelapse-speed").onchange = function (event) {
-    pace = (+event.target.value) * DAY;
+    speed = +event.target.value;
+    lastTick = performance.now();
   };
   var slider = document.getElementById("timelapse-slider");
   slider.max = String(sliderMax);

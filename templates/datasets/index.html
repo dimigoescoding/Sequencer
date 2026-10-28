@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% load sequencer_tags %}
-{% block title %}Foundation data — {{ project.name }}{% endblock %}
+{% block title %}Data — {{ project.name }}{% endblock %}
 {% block content %}
 {% include "partials/project_nav.html" with nav="data" %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h1 class="h3 mb-0">Foundation data</h1>
+  <h1 class="h3 mb-0">Data</h1>
   <div class="d-flex gap-2">
     <a class="btn btn-outline-primary" href="{% url 'datasets:template' project.pk %}">Download template</a>
     <a class="btn btn-primary" href="{% url 'datasets:upload' project.pk %}">Upload workbook</a>

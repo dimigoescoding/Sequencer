@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% load sequencer_tags %}
 {% block title %}{% if archived %}Archived projects{% else %}Projects{% endif %} — Sequencer{% endblock %}
+{% block footer %}
+<div class="text-center">© 2026 Sequencer. All rights reserved.</div>
+<div class="text-center">By Paf Pouf Engineering</div>
+{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h1 class="h3 mb-0">{% if archived %}Archived projects{% else %}Projects{% endif %}</h1>

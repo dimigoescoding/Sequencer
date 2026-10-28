@@ -4,5 +4,6 @@
     <li class="nav-item"><a class="nav-link {% if nav == 'overview' %}active{% endif %}" href="{% url 'projects:detail' project.pk %}">Overview</a></li>
     <li class="nav-item"><a class="nav-link {% if nav == 'data' %}active{% endif %}" href="{% url 'datasets:index' project.pk %}">Data</a></li>
     <li class="nav-item"><a class="nav-link {% if nav == 'scenarios' %}active{% endif %}" href="{% url 'scenarios:list' project.pk %}">Scenarios</a></li>
+    <li class="nav-item"><a class="nav-link {% if nav == 'results' %}active{% endif %}" href="{% url 'projects:runs' project.pk %}">Results</a></li>
   </ul>
 </aside>
