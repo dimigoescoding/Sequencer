@@ -5,7 +5,10 @@ slot 1 of that package, sequence 2 uses slot 2, and so on. A slot is not a
 location id. SSt installation, filter layer, and armour layer use the FOU
 sequence. IAC burial uses the IAC sequence. WTG commissioning uses the WTG
 sequence. A slice is omitted when its dates are blank. The OSS id is a label.
-Coordinates come from the dataset stored with the run.
+A cable is a line between its two locations and a pizza at the midpoint. The line
+uses the lay colour during IAC lay, then grey, the burial colour during IAC
+burial, then a darker grey. The pizza fills with those same colours and has no
+name. Coordinates come from the dataset stored with the run.
 """
 
 from __future__ import annotations
@@ -189,6 +192,10 @@ def _cable_places(run, rows, slots, missing: list[str]) -> list[dict[str, Any]]:
                 "kind": "cable",
                 "x": (start[0] + end[0]) / 2,
                 "y": (start[1] + end[1]) / 2,
+                "x1": start[0],
+                "y1": start[1],
+                "x2": end[0],
+                "y2": end[1],
                 "slices": slivers,
             }
         )
