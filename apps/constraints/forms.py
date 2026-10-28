@@ -56,11 +56,12 @@ class ConstraintForm(forms.Form):
         kwargs["initial"] = initial
         super().__init__(**kwargs)
         self._add_type_fields(foundation_ids, columns, vessel.max_foundations_per_trip)
-        if self.constraint_type == "loop_id_sequence":
+        if self.constraint_type in {"loop_id_sequence", "string_id_sequence"}:
             self.fields["package"].choices = [("IAC", "IAC")]
             self.fields["package"].initial = "IAC"
             self.fields["package"].required = True
-            self.fields["package"].help_text = "Loop ID is read from the IAC sheet."
+            column = "Loop ID" if self.constraint_type == "loop_id_sequence" else "String ID"
+            self.fields["package"].help_text = f"{column} is read from the IAC sheet."
         if self.constraint_type == "package_buffer":
             self.fields["package"].choices = [("IAC", "IAC"), ("WTG", "WTG")]
             self.fields["package"].initial = "IAC"
@@ -367,6 +368,8 @@ class ConstraintForm(forms.Form):
             return {"include_harbour_legs": False}
         if kind == "loop_id_sequence":
             return {"attribute": "Loop ID"}
+        if kind == "string_id_sequence":
+            return {"attribute": "String ID"}
         if kind == "package_buffer":
             if cleaned.get("mode") == "maximize":
                 return {"mode": "maximize"}

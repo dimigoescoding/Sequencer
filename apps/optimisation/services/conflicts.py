@@ -12,6 +12,7 @@ from apps.constraints.services.matching import (
     column_state,
     loop_blocks,
     matching_foundations,
+    string_blocks,
 )
 from apps.constraints.services.parameters import validate_parameters
 from apps.optimisation.services.buffer import buffer_problem
@@ -252,11 +253,17 @@ def _apply_hard(
     count = len(included)
     trips = required_trips(count, capacity)
 
-    if kind == "loop_id_sequence":
-        for indexes in loop_blocks(included, constraints):
+    if kind in {"loop_id_sequence", "string_id_sequence"}:
+        blocks = (
+            loop_blocks(included, constraints)
+            if kind == "loop_id_sequence"
+            else string_blocks(included, constraints)
+        )
+        label = "Loop ID" if kind == "loop_id_sequence" else "String ID"
+        for indexes in blocks:
             if len(indexes) > capacity:
                 conflicts.append(
-                    f"{constraint.name} keeps {len(indexes)} cables with one Loop ID together "
+                    f"{constraint.name} keeps {len(indexes)} cables with one {label} together "
                     f"inside one trip, above the trip capacity of {capacity}."
                 )
         return

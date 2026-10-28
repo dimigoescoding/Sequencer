@@ -26,6 +26,7 @@
     <div class="progress" role="progressbar" aria-labelledby="generate-status">
       <div class="progress-bar progress-bar-striped progress-bar-animated w-100"></div>
     </div>
+    <button class="btn btn-outline-danger mt-3" id="generate-cancel" type="button" hidden data-url="{% url 'scenarios:cancel' project.pk scenario.pk %}">Cancel</button>
   </div>
 </form>
 {% endblock %}

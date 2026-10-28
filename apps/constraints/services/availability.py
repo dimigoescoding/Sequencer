@@ -34,6 +34,10 @@ def availability_reasons(
         reasons["loop_id_sequence"] = (
             "Loop ID sequence requires the Loop ID column on the IAC sheet."
         )
+    if "String ID" not in columns_present:
+        reasons["string_id_sequence"] = (
+            "String ID sequence requires the String ID column on the IAC sheet."
+        )
     if not state["Delivery_Sequence"]["complete"]:
         reasons["delivery_sequence_alignment"] = (
             "Delivery-sequence alignment requires Delivery_Sequence on every included foundation."

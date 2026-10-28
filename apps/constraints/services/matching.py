@@ -233,15 +233,15 @@ def matching_foundations(
     return []
 
 
-def loop_id_groups(items: list[FoundationInput]) -> list[list[int]]:
-    """Indexes of included cables that share a Loop ID, in sheet order.
+def attribute_groups(items: list[FoundationInput], attribute: str) -> list[list[int]]:
+    """Indexes that share one attribute value, in the order of items.
 
-    A blank Loop ID is not a group. A value used once is not returned.
+    A blank value is not a group. A value used once is not returned.
     """
     groups: dict[str, list[int]] = {}
     order: list[str] = []
     for index, item in enumerate(items):
-        label = str(attribute_value(item, "Loop ID") or "").strip()
+        label = str(attribute_value(item, attribute) or "").strip()
         if not label:
             continue
         key = label.casefold()
@@ -252,19 +252,41 @@ def loop_id_groups(items: list[FoundationInput]) -> list[list[int]]:
     return [groups[key] for key in order if len(groups[key]) > 1]
 
 
-def loop_blocks(items: list[FoundationInput], constraints: list | None = None) -> list[list[int]]:
-    """Loop ID blocks that stay together, in sheet order.
+def sequence_blocks(
+    items: list[FoundationInput], constraints: list | None, attribute: str
+) -> list[list[int]]:
+    """Blocks that stay together after a hard installed-first rule.
 
-    A hard rule that installs matching locations first takes those cables out.
-    The cables that remain are one uninterrupted block. A block of one is dropped.
+    Cables that rule installs first are taken out. The cables that remain are
+    one uninterrupted block, in sheet order. A block of one is dropped.
     """
     reserved = _installed_first_ids(items, constraints or [])
     blocks: list[list[int]] = []
-    for indexes in loop_id_groups(items):
+    for indexes in attribute_groups(items, attribute):
         kept = [index for index in indexes if items[index].foundation_id not in reserved]
         if len(kept) > 1:
             blocks.append(kept)
     return blocks
+
+
+def loop_id_groups(items: list[FoundationInput]) -> list[list[int]]:
+    """Indexes of included cables that share a Loop ID, in sheet order."""
+    return attribute_groups(items, "Loop ID")
+
+
+def loop_blocks(items: list[FoundationInput], constraints: list | None = None) -> list[list[int]]:
+    """Loop ID blocks that stay together, in sheet order."""
+    return sequence_blocks(items, constraints, "Loop ID")
+
+
+def string_id_groups(items: list[FoundationInput]) -> list[list[int]]:
+    """Indexes of included cables that share a String ID, in sheet order."""
+    return attribute_groups(items, "String ID")
+
+
+def string_blocks(items: list[FoundationInput], constraints: list | None = None) -> list[list[int]]:
+    """String ID blocks that stay together, in sheet order."""
+    return sequence_blocks(items, constraints, "String ID")
 
 
 def _installed_first_ids(items: list[FoundationInput], constraints: list) -> set[str]:

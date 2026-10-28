@@ -14,7 +14,7 @@ from typing import Any
 
 from ortools.sat.python import cp_model
 
-from apps.constraints.services.matching import loop_blocks, matching_foundations
+from apps.constraints.services.matching import loop_blocks, matching_foundations, string_blocks
 from apps.optimisation.services.buffer import (
     DAY_SECONDS,
     PREVIOUS,
@@ -24,6 +24,7 @@ from apps.optimisation.services.buffer import (
     slot_instants,
     worst_shortfall,
 )
+from apps.optimisation.services.cancellation import bind, release, was_cancelled
 from apps.optimisation.services.geometry import (
     positions_in_trip_window,
     required_trips,
@@ -68,6 +69,8 @@ def solve_order(
             foundations, vessel, active, included, distance, limit, started
         )
         runtime = time.perf_counter() - started
+        if status == "CANCELLED" or was_cancelled():
+            return _cancelled(runtime)
         message = _distance_message(status, active, included, vessel, order, bound)
         return status, objective, runtime, message, order
     hint = _starting_route(foundations, vessel, active, included, limit, started)
@@ -80,10 +83,15 @@ def solve_order(
     if hint:
         builder.hint(hint)
     status, objective, order = builder.solve()
+    runtime = time.perf_counter() - started
+    if status == "CANCELLED" or was_cancelled():
+        return _cancelled(runtime)
     status, objective, order = _shorter_sailing(
         foundations, vessel, active, included, hint, status, objective, order
     )
     runtime = time.perf_counter() - started
+    if was_cancelled():
+        return _cancelled(runtime)
     message = _status_message(status, active)
     return status, objective, runtime, message, order
 
@@ -177,8 +185,10 @@ def solve_programme(
     if terms:
         model.Minimize(sum(terms))
     solver = _solver(vessel.solver_time_limit_seconds)
-    status = _status_code(solver.Solve(model))
+    status = _run_solver(solver, model)
     runtime = time.perf_counter() - started
+    if status == "CANCELLED":
+        return (*_cancelled(runtime),)
     active = [item for item in constraints if item.active]
     message = _status_message(status, active)
     programme_note = (
@@ -335,6 +345,27 @@ def _combined_objective(builders: list[_Builder]) -> list[Any]:
     return terms
 
 
+def _cancelled(runtime: float):
+    return (
+        "CANCELLED",
+        None,
+        runtime,
+        "The run was cancelled. No sequence was stored.",
+        [],
+    )
+
+
+def _run_solver(solver: cp_model.CpSolver, model: cp_model.CpModel) -> str:
+    bind(solver)
+    try:
+        code = solver.Solve(model)
+    finally:
+        release(solver)
+    if was_cancelled():
+        return "CANCELLED"
+    return _status_code(code)
+
+
 def _solver(time_limit: int) -> cp_model.CpSolver:
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = float(max(time_limit, 1))
@@ -421,9 +452,9 @@ def _search_complete_path(
     widths = [min(len(included), capacity * multiple) for multiple in (1, 2, 3, 4, 5)]
     widths = [width for width in dict.fromkeys(widths) if width >= 2]
     shift = 0
-    while time.perf_counter() < deadline - 0.3:
+    while time.perf_counter() < deadline - 0.3 and not was_cancelled():
         for left, width in _longest_leg_windows(order, included, matrix, capacity):
-            if time.perf_counter() >= deadline - 0.3:
+            if was_cancelled() or time.perf_counter() >= deadline - 0.3:
                 break
             right = min(len(included), left + width)
             slice_limit = min(4.0, deadline - time.perf_counter())
@@ -434,9 +465,11 @@ def _search_complete_path(
             )
             order = _shorter_order(included, order, candidate)
         for width in widths:
+            if was_cancelled():
+                break
             step = max(1, min(capacity, width // 2))
             for left in range(shift % step, len(included) - 1, step):
-                if time.perf_counter() >= deadline - 0.3:
+                if was_cancelled() or time.perf_counter() >= deadline - 0.3:
                     break
                 right = min(len(included), left + width)
                 if right - left < 2:
@@ -917,6 +950,7 @@ class _Builder:
             "matching_installed_first": self._installed_first,
             "avoid_matching_in_first_trips": self._avoid_first_trips,
             "loop_id_sequence": self._loop_sequence,
+            "string_id_sequence": self._string_sequence,
         }.get(kind)
         if handler:
             handler(constraint)
@@ -1308,7 +1342,12 @@ class _Builder:
         self._penalise(sum(violations), max(limit * len(indexes), 1), constraint.severity)
 
     def _loop_sequence(self, constraint: ConstraintInput) -> None:
-        groups = loop_blocks(self.included, self.constraints)
+        self._ordered_blocks(loop_blocks(self.included, self.constraints), constraint, "loop")
+
+    def _string_sequence(self, constraint: ConstraintInput) -> None:
+        self._ordered_blocks(string_blocks(self.included, self.constraints), constraint, "string")
+
+    def _ordered_blocks(self, groups: list[list[int]], constraint: ConstraintInput, prefix: str) -> None:
         if not groups or self.n < 2:
             return
         if constraint.enforcement == "hard":
@@ -1321,11 +1360,11 @@ class _Builder:
         span = (self.n - 1) + self.n
         for indexes in groups:
             for left, right in zip(indexes, indexes[1:], strict=False):
-                gap = self._int(1 - self.n, self.n - 1, "loopgap")
+                gap = self._int(1 - self.n, self.n - 1, f"{prefix}gap")
                 self.model.Add(gap == self.position_of[right] - self.position_of[left] - 1)
-                deviation = self._int(0, self.n - 1, "loopdev")
+                deviation = self._int(0, self.n - 1, f"{prefix}dev")
                 self.model.AddAbsEquality(deviation, gap)
-                same_trip = self._bool("loopsame")
+                same_trip = self._bool(f"{prefix}same")
                 self.model.Add(self.trip_of[right] == self.trip_of[left]).OnlyEnforceIf(same_trip)
                 self.model.Add(self.trip_of[right] != self.trip_of[left]).OnlyEnforceIf(
                     same_trip.Not()
@@ -1459,7 +1498,7 @@ class _Builder:
         if has_objective:
             self.model.Minimize(sum(terms))
         solver = _solver(self.vessel.solver_time_limit_seconds)
-        status = _status_code(solver.Solve(self.model))
+        status = _run_solver(solver, self.model)
         if status not in {"OPTIMAL", "FEASIBLE"}:
             return status, None, []
         order = self.read_order(solver)

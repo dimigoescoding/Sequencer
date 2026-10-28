@@ -1,10 +1,19 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from apps.access import owned_project, owned_scenario
-from apps.optimisation.services.runner import SolveBlocked, SolveBusy, blocking_messages, execute
+from apps.optimisation.services.cancellation import cancel
+from apps.optimisation.services.runner import (
+    SolveBlocked,
+    SolveBusy,
+    SolveCancelled,
+    blocking_messages,
+    execute,
+)
 from apps.projects.services import duplicate_scenario
 from apps.scenarios.forms import ProgrammeSettingsForm, ScenarioDatasetForm, ScenarioForm
 from apps.scenarios.models import VesselSettings
@@ -131,24 +140,40 @@ def scenario_dataset(request, project_id: int, scenario_id: int):
     )
 
 
+def _generate_target(request, url: str):
+    if request.POST.get("async") == "1":
+        return JsonResponse({"redirect": url})
+    return redirect(url)
+
+
 @login_required
 def generate(request, project_id: int, scenario_id: int):
     scenario = owned_scenario(request.user, project_id, scenario_id)
     conflicts = blocking_messages(scenario)
+    page = reverse("scenarios:generate", args=[scenario.project_id, scenario.pk])
     if request.method == "POST":
         if conflicts:
             messages.error(request, "The solver was not started. Resolve the conflicts below.")
+            if request.POST.get("async") == "1":
+                return _generate_target(request, page)
         else:
             try:
-                run = execute(scenario)
+                run = execute(scenario, request.POST.get("cancel_token", ""))
+            except SolveCancelled:
+                messages.warning(request, "The run was cancelled. No sequence was stored.")
+                return _generate_target(request, page)
             except SolveBlocked as exc:
                 conflicts = exc.conflicts
                 messages.error(request, "The solver was not started.")
+                if request.POST.get("async") == "1":
+                    return _generate_target(request, page)
             except SolveBusy:
                 messages.error(
                     request,
                     "A sequence is already running on this server. Wait for it to finish, then try again.",
                 )
+                if request.POST.get("async") == "1":
+                    return _generate_target(request, page)
             else:
                 if run.status == "INFEASIBLE":
                     messages.error(
@@ -164,7 +189,9 @@ def generate(request, project_id: int, scenario_id: int):
                     )
                 else:
                     messages.warning(request, run.message)
-                return redirect("optimisation:detail", run_id=run.pk)
+                return _generate_target(
+                    request, reverse("optimisation:detail", args=[run.pk])
+                )
     return render(
         request,
         "scenarios/generate.html",
@@ -175,6 +202,14 @@ def generate(request, project_id: int, scenario_id: int):
             "constraints": scenario.constraints.filter(active=True),
         },
     )
+
+
+@login_required
+@require_POST
+def generate_cancel(request, project_id: int, scenario_id: int):
+    owned_scenario(request.user, project_id, scenario_id)
+    cancel(request.POST.get("cancel_token", ""))
+    return HttpResponse(status=204)
 
 
 @login_required

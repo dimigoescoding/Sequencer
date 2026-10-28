@@ -14,5 +14,6 @@ urlpatterns = [
     path("<int:scenario_id>/settings/", views.vessel_settings, name="settings"),
     path("<int:scenario_id>/dataset/", views.scenario_dataset, name="dataset"),
     path("<int:scenario_id>/generate/", views.generate, name="generate"),
+    path("<int:scenario_id>/generate/cancel/", views.generate_cancel, name="cancel"),
     path("<int:scenario_id>/runs/", views.scenario_runs, name="runs"),
 ]

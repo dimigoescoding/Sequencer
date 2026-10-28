@@ -17,16 +17,42 @@ document.addEventListener("DOMContentLoaded", () => {
       generateForm.dataset.running = "1";
       const progress = document.getElementById("generate-progress");
       const button = document.getElementById("generate-button");
+      const cancelButton = document.getElementById("generate-cancel");
+      const token = String(Date.now());
       if (progress) {
         progress.hidden = false;
       }
       if (button) {
         button.disabled = true;
       }
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          generateForm.submit();
-        });
+      if (cancelButton) {
+        cancelButton.hidden = false;
+        cancelButton.onclick = () => {
+          cancelButton.disabled = true;
+          const data = new FormData();
+          const csrf = generateForm.querySelector("[name=csrfmiddlewaretoken]");
+          if (csrf) {
+            data.append("csrfmiddlewaretoken", csrf.value);
+          }
+          data.append("cancel_token", token);
+          window.fetch(cancelButton.getAttribute("data-url"), {
+            method: "POST",
+            body: data,
+            credentials: "same-origin"
+          });
+        };
+      }
+      const body = new FormData(generateForm);
+      body.append("async", "1");
+      body.append("cancel_token", token);
+      window.fetch(generateForm.action || window.location.href, {
+        method: "POST",
+        body: body,
+        credentials: "same-origin"
+      }).then((response) => response.json()).then((data) => {
+        window.location = data.redirect;
+      }).catch(() => {
+        window.location.reload();
       });
     });
   }

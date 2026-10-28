@@ -116,6 +116,15 @@ CONSTRAINT_TYPES: dict[str, dict[str, str]] = {
             "any order. A blank Loop ID is not grouped."
         ),
     },
+    "string_id_sequence": {
+        "label": "String ID sequence",
+        "summary": (
+            "Cables with the same String ID are installed one after another, in the IAC sheet order, "
+            "inside one trip. A hard rule that installs some of them first takes those cables out. "
+            "The cables that remain stay one uninterrupted block. Different String IDs may come in "
+            "any order. A blank String ID is not grouped."
+        ),
+    },
     "package_buffer": {
         "label": "Package buffer",
         "summary": (
