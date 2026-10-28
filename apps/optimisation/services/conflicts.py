@@ -10,7 +10,7 @@ from typing import Any
 from apps.constraints.services.matching import (
     ORDERING_ATTRIBUTES,
     column_state,
-    loop_id_groups,
+    loop_blocks,
     matching_foundations,
 )
 from apps.constraints.services.parameters import validate_parameters
@@ -179,6 +179,7 @@ def find_conflicts(
             separate_pairs,
             rule_limits,
             conflicts,
+            active,
         )
 
     _evaluate_bounds(
@@ -243,6 +244,7 @@ def _apply_hard(
     separate_pairs: list[tuple[str, str, str]],
     rule_limits: dict[tuple[Any, ...], dict[str, int]],
     conflicts: list[str],
+    constraints: list[ConstraintInput] | None = None,
 ) -> None:
     parameters = constraint.parameters
     kind = constraint.constraint_type
@@ -251,7 +253,7 @@ def _apply_hard(
     trips = required_trips(count, capacity)
 
     if kind == "loop_id_sequence":
-        for indexes in loop_id_groups(included):
+        for indexes in loop_blocks(included, constraints):
             if len(indexes) > capacity:
                 conflicts.append(
                     f"{constraint.name} keeps {len(indexes)} cables with one Loop ID together "

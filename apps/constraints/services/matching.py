@@ -252,6 +252,36 @@ def loop_id_groups(items: list[FoundationInput]) -> list[list[int]]:
     return [groups[key] for key in order if len(groups[key]) > 1]
 
 
+def loop_blocks(items: list[FoundationInput], constraints: list | None = None) -> list[list[int]]:
+    """Loop ID blocks that stay together, in sheet order.
+
+    A hard rule that installs matching locations first takes those cables out.
+    The cables that remain are one uninterrupted block. A block of one is dropped.
+    """
+    reserved = _installed_first_ids(items, constraints or [])
+    blocks: list[list[int]] = []
+    for indexes in loop_id_groups(items):
+        kept = [index for index in indexes if items[index].foundation_id not in reserved]
+        if len(kept) > 1:
+            blocks.append(kept)
+    return blocks
+
+
+def _installed_first_ids(items: list[FoundationInput], constraints: list) -> set[str]:
+    reserved: set[str] = set()
+    for constraint in constraints:
+        if not getattr(constraint, "active", False):
+            continue
+        if getattr(constraint, "enforcement", "") != "hard":
+            continue
+        if getattr(constraint, "constraint_type", "") != "matching_installed_first":
+            continue
+        parameters = getattr(constraint, "parameters", None) or {}
+        for item in matching_foundations(items, parameters):
+            reserved.add(item.foundation_id)
+    return reserved
+
+
 def column_state(
     foundations: list[FoundationInput], columns_present: set[str]
 ) -> dict[str, dict[str, bool]]:

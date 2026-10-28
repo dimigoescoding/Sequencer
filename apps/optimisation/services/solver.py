@@ -14,7 +14,7 @@ from typing import Any
 
 from ortools.sat.python import cp_model
 
-from apps.constraints.services.matching import loop_id_groups, matching_foundations
+from apps.constraints.services.matching import loop_blocks, matching_foundations
 from apps.optimisation.services.buffer import (
     DAY_SECONDS,
     PREVIOUS,
@@ -72,7 +72,9 @@ def solve_order(
         return status, objective, runtime, message, order
     hint = _starting_route(foundations, vessel, active, included, limit, started)
     remaining = max(1, limit - int(time.perf_counter() - started))
-    builder = _Builder(included, replace(vessel, solver_time_limit_seconds=remaining))
+    builder = _Builder(
+        included, replace(vessel, solver_time_limit_seconds=remaining), constraints=active
+    )
     for constraint in active:
         builder.add_constraint(constraint)
     if hint:
@@ -225,10 +227,10 @@ def _package(constraint: ConstraintInput) -> str:
 
 
 def _add_campaign(model, builders, plans, package, items, vessel, constraints, prefix) -> None:
-    builder = _Builder(items, vessel, model=model, name_prefix=prefix)
-    for constraint in constraints:
-        if constraint.active:
-            builder.add_constraint(constraint)
+    active = [item for item in constraints if item.active]
+    builder = _Builder(items, vessel, model=model, name_prefix=prefix, constraints=active)
+    for constraint in active:
+        builder.add_constraint(constraint)
     builders.append(builder)
     plans.append((package, items, vessel, constraints))
 
@@ -377,7 +379,9 @@ def _starting_route(
     if remaining < 10 or len(included) <= 12:
         return hint
     warm_limit = min(15, max(5, int(remaining) // 5))
-    warm = _Builder(included, replace(vessel, solver_time_limit_seconds=warm_limit))
+    warm = _Builder(
+        included, replace(vessel, solver_time_limit_seconds=warm_limit), constraints=active
+    )
     for constraint in active:
         if constraint.constraint_type == "minimise_within_trip_distance":
             warm.add_within_trip_start(constraint)
@@ -463,7 +467,11 @@ def _reoptimize_window(
     matrix: list[list[int]],
     time_limit: float,
 ) -> list[str]:
-    builder = _Builder(included, replace(vessel, solver_time_limit_seconds=max(1, int(time_limit))))
+    builder = _Builder(
+        included,
+        replace(vessel, solver_time_limit_seconds=max(1, int(time_limit))),
+        constraints=active,
+    )
     builder.vessel = replace(builder.vessel, solver_time_limit_seconds=time_limit)
     for constraint in active:
         if constraint.constraint_type == "minimise_within_trip_distance":
@@ -814,9 +822,11 @@ class _Builder:
         *,
         model: cp_model.CpModel | None = None,
         name_prefix: str = "",
+        constraints: list | None = None,
     ) -> None:
         self.included = included
         self.vessel = vessel
+        self.constraints = list(constraints or [])
         self.name_prefix = name_prefix
         self.n = len(included)
         self.capacity = vessel.max_foundations_per_trip
@@ -1298,7 +1308,7 @@ class _Builder:
         self._penalise(sum(violations), max(limit * len(indexes), 1), constraint.severity)
 
     def _loop_sequence(self, constraint: ConstraintInput) -> None:
-        groups = loop_id_groups(self.included)
+        groups = loop_blocks(self.included, self.constraints)
         if not groups or self.n < 2:
             return
         if constraint.enforcement == "hard":

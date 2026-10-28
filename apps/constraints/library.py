@@ -111,7 +111,9 @@ CONSTRAINT_TYPES: dict[str, dict[str, str]] = {
         "label": "Loop ID sequence",
         "summary": (
             "Cables with the same Loop ID are installed one after another, in the IAC sheet order, "
-            "inside one trip. Different Loop IDs may come in any order. A blank Loop ID is not grouped."
+            "inside one trip. A hard rule that installs some of them first takes those cables out. "
+            "The cables that remain stay one uninterrupted block. Different Loop IDs may come in "
+            "any order. A blank Loop ID is not grouped."
         ),
     },
     "package_buffer": {
