@@ -138,15 +138,3 @@ CONSTRAINT_TYPES: dict[str, dict[str, str]] = {
 TYPE_ORDER: list[str] = sorted(
     CONSTRAINT_TYPES, key=lambda key: CONSTRAINT_TYPES[key]["label"].casefold()
 )
-
-
-def display_constraints(rows):
-    """Constraints in alphabetical order of the rule, then the name."""
-    return sorted(
-        rows,
-        key=lambda item: (
-            item.type_label.casefold(),
-            str(item.name or "").casefold(),
-            getattr(item, "pk", 0) or 0,
-        ),
-    )

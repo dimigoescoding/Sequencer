@@ -6,7 +6,7 @@ from django.views.decorators.http import require_POST
 
 from apps.access import owned_constraint, owned_scenario
 from apps.constraints.forms import ConstraintForm, ConstraintLevelForm
-from apps.constraints.library import CONSTRAINT_TYPES, TYPE_ORDER, display_constraints
+from apps.constraints.library import CONSTRAINT_TYPES, TYPE_ORDER
 from apps.constraints.models import Constraint
 from apps.constraints.services.availability import availability_reasons, punch_through_explanation
 from apps.optimisation.services.runner import scenario_context, vessel_config
@@ -21,7 +21,7 @@ def constraint_list(request, project_id: int, scenario_id: int):
         {
             "project": scenario.project,
             "scenario": scenario,
-            "constraints": display_constraints(scenario.constraints.all()),
+            "constraints": scenario.constraints.all(),
         },
     )
 
