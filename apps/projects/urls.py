@@ -15,4 +15,5 @@ urlpatterns = [
     path("<int:project_id>/restore/", views.project_restore, name="restore"),
     path("<int:project_id>/vessel/", views.project_vessel, name="vessel"),
     path("<int:project_id>/runs/", views.project_runs, name="runs"),
+    path("<int:project_id>/help/", views.project_help, name="help"),
 ]

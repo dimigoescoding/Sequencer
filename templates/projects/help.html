@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Help — {{ project.name }}{% endblock %}
+{% block content %}
+{% include "partials/project_nav.html" with nav="help" %}
+<h1 class="h3">Help</h1>
+<p>A short description of how a sequence is produced. The workbook supplies the locations, cables, and programme dates. The constraints you save are the rules.</p>
+
+<h2 class="h5">How the app works</h2>
+<ol class="help-flow">
+  <li><span>1</span>Create a project</li>
+  <li><span>2</span>Upload a workbook on Data</li>
+  <li><span>3</span>Create a scenario and choose its dataset version</li>
+  <li><span>4</span>Set FOU per trip, WTG per trip, and the solver time</li>
+  <li><span>5</span>Add constraints, choose hard or soft, and leave active the rules to use</li>
+  <li><span>6</span>Generate a sequence</li>
+  <li><span>7</span>Review validation, the visual, the progress graph, and the Excel export</li>
+</ol>
+<p>One scenario keeps the dataset version you selected. Uploading a newer workbook does not change that scenario until you edit its dataset. An inactive constraint stays on the scenario and is left out of the solve. Cancel stops a run that has already started and stores no sequence.</p>
+
+<h2 class="h5">The solver</h2>
+<p>Sequencer uses Google OR-Tools CP-SAT. Each package has one installation order. The trip number and the position on the vessel follow from that order and the trip size. When IAC or WTG locations are included, FOU, IAC, and WTG are solved together in one model. The packages do not wait for each other unless a Package buffer constraint says so.</p>
+<p>A hard constraint is a requirement. The solver has to meet it. A hard constraint is not turned into a soft one, and it is not dropped to produce a sequence. After the solver stops, the same hard rules are checked again on the stored order. If that check fails, the run is invalid and is not an approved sequence.</p>
+<p>A soft constraint is a preference. Severity from 1 to 100 sets how strongly it pulls against the other soft preferences. A soft break keeps the run valid and records a penalty.</p>
+<p>If no feasible order exists, the search ends without a proven result, or the solver reports an error, no sequence is stored. The time limit is 1 to 600 seconds.</p>
+
+<h2 class="h5">Constraints</h2>
+<p>The list is alphabetical. Each rule applies to the package selected on it.</p>
+{% for item in library %}
+  <article class="mb-3">
+    <h3 class="h6 mb-1">{{ item.label }}</h3>
+    <p class="mb-0">{{ item.summary }}</p>
+  </article>
+{% endfor %}
+{% endblock %}

@@ -6,7 +6,9 @@ from django.shortcuts import render
 from apps.access import owned_run
 from apps.exports.services.workbook import build_run_workbook, export_filename
 from apps.optimisation.services.buffer import buffer_column, programme_inputs
+from apps.optimisation.services.progress import progress_chart
 from apps.optimisation.services.timelapse import timelapse_payload
+from apps.optimisation.services.visual_page import build_visual_html, visual_filename
 
 SEQUENCE_SORTS = {
     "package",
@@ -61,6 +63,7 @@ def run_detail(request, run_id: int):
             "checks": run.validation_rows.all(),
             "tab": tab,
             "timelapse": timelapse_payload(run) if tab == "visual" else None,
+            "chart": progress_chart(run) if tab == "graph" else None,
             "hard_constraints": [
                 item
                 for item in run.constraint_snapshot or []
@@ -68,6 +71,17 @@ def run_detail(request, run_id: int):
             ],
         },
     )
+
+
+@login_required
+def run_visual(request, run_id: int):
+    run = owned_run(request.user, run_id)
+    page = build_visual_html(run)
+    if page is None:
+        return HttpResponse("This run has no visual to download.", status=404)
+    response = HttpResponse(page, content_type="text/html; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="{visual_filename(run)}"'
+    return response
 
 
 @login_required

@@ -135,4 +135,6 @@ CONSTRAINT_TYPES: dict[str, dict[str, str]] = {
     },
 }
 
-TYPE_ORDER: list[str] = list(CONSTRAINT_TYPES)
+TYPE_ORDER: list[str] = sorted(
+    CONSTRAINT_TYPES, key=lambda key: CONSTRAINT_TYPES[key]["label"].casefold()
+)
