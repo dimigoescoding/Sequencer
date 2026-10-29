@@ -59,6 +59,7 @@ WTG_FIELDS = {
     "northing": "northing",
     "spider location": "spider_location",
     "string": "string",
+    "string id": "string",
     "jacking difficulty": "jacking_difficulty",
     "jacking difficulty wtg": "jacking_difficulty",
 }
@@ -107,7 +108,7 @@ WTG_COLUMNS = {
     "easting": "Easting_m",
     "northing": "Northing_m",
     "spider_location": "Spider location",
-    "string": "String",
+    "string": "String ID",
     "jacking_difficulty": "Jacking difficulty WTG",
 }
 REQUIRED_SHEETS = ("FOU data", "IAC data", "WTG data", "Programme")

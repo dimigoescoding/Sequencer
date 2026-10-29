@@ -73,6 +73,7 @@ def wtg_activity(row) -> FoundationInput:
             "Structure": row.structure,
             "Spider location": row.spider_location,
             "String": row.string_label,
+            "String ID": row.string_label,
             "Jacking difficulty WTG": row.jacking_difficulty,
         },
     )

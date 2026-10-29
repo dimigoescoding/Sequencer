@@ -376,6 +376,7 @@ def _check_constraint(
             blocks=loop_blocks(included, constraints),
             title="Loop ID sequence",
             label="Loop ID",
+            one_trip=True,
         )
     if kind == "string_id_sequence":
         return _id_sequence(
@@ -389,6 +390,7 @@ def _check_constraint(
             blocks=string_blocks(included, constraints),
             title="String ID sequence",
             label="String ID",
+            one_trip=False,
         )
     add(
         constraint.constraint_type,
@@ -1068,6 +1070,7 @@ def _id_sequence(
     blocks,
     title,
     label,
+    one_trip,
 ):
     placed = {item.foundation.foundation_id: item for item in placements}
     members = [included[index].foundation_id for indexes in blocks for index in indexes]
@@ -1080,7 +1083,11 @@ def _id_sequence(
             "Nothing to keep together",
             "Passed",
             [],
-            f"A {label} used once, or left blank, is not grouped.",
+            f"A {label} used once, or left blank, is not grouped."
+            if one_trip
+            else "Locations that share the letter of a String ID form one block. "
+            "The number after the letter sets their order. A blank value, a value without "
+            "that number, or a letter used once, is not grouped.",
         )
         return _empty()
     if not blocks:
@@ -1088,11 +1095,16 @@ def _id_sequence(
             title,
             constraint.name,
             f"No remaining {label} block",
-            "Another hard rule installs the grouped cables first",
+            "Another hard rule installs the grouped cables first"
+            if one_trip
+            else "Another hard rule installs the grouped locations first",
             "Passed",
             [],
             "A hard installed-first rule takes those cables out of the block. "
-            "Fewer than two cables remain to install together.",
+            "Fewer than two cables remain to install together."
+            if one_trip
+            else "A hard installed-first rule takes those locations out of the block. "
+            "Fewer than two locations remain to install together.",
         )
         return _empty()
     broken: list[str] = []
@@ -1104,34 +1116,48 @@ def _id_sequence(
             left = placed[left_id]
             right = placed[right_id]
             gap = abs(right.sequence - left.sequence - 1)
-            split = 0 if left.trip == right.trip else count
+            split = 0 if not one_trip or left.trip == right.trip else count
             if gap or split:
                 broken.extend([left_id, right_id])
             raw += gap + split
     affected = list(dict.fromkeys(broken))
     if constraint.enforcement == "hard":
+        if one_trip:
+            respected = (
+                f"Cables that share a {label} follow the IAC sheet inside one trip. "
+                "Cables taken by a hard installed-first rule stay with that rule."
+            )
+            target = "IAC sheet order, one after another, inside one trip"
+        else:
+            respected = (
+                "Locations that share a string letter follow the number after that letter, "
+                "one after another. Locations taken by a hard installed-first rule stay with that rule."
+            )
+            target = "Number order, one after another"
         add(
             title,
             constraint.name,
-            "IAC sheet order, one after another, inside one trip",
+            target,
             "Respected" if not affected else "Broken: " + ", ".join(affected),
             "Passed" if not affected else "Failed",
             affected,
-            f"Cables that share a {label} follow the IAC sheet inside one trip. "
-            "Cables taken by a hard installed-first rule stay with that rule."
+            respected
             if not affected
             else f"The remaining {label} block is broken. No hard constraint was relaxed.",
         )
         return 0, set(affected), set(), set(), set()
     links = sum(len(indexes) - 1 for indexes in blocks)
-    max_raw = max(links * ((count - 1) + count), 1)
+    step = (count - 1) + (count if one_trip else 0)
+    max_raw = max(links * step, 1)
     penalty = scaled_penalty(raw, max_raw, constraint.severity or 0) if raw else 0
     for foundation_id in affected:
         penalties[foundation_id] += penalty
     add(
         title,
         constraint.name,
-        "Prefer the IAC sheet order inside one trip",
+        "Prefer the IAC sheet order inside one trip"
+        if one_trip
+        else "Prefer the string number order, one after another",
         f"breaks={len(affected)}; penalty={penalty}",
         "Soft trade-off" if penalty else "Passed",
         affected,

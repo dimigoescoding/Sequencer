@@ -36,7 +36,7 @@ def availability_reasons(
         )
     if "String ID" not in columns_present:
         reasons["string_id_sequence"] = (
-            "String ID sequence requires the String ID column on the IAC sheet."
+            "String ID sequence requires the String ID column on the WTG sheet."
         )
     if not state["Delivery_Sequence"]["complete"]:
         reasons["delivery_sequence_alignment"] = (

@@ -5,6 +5,7 @@ Values are compared as data. Nothing in this module is evaluated as code.
 
 from __future__ import annotations
 
+import re
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -279,14 +280,59 @@ def loop_blocks(items: list[FoundationInput], constraints: list | None = None) -
     return sequence_blocks(items, constraints, "Loop ID")
 
 
+_STRING_ID = re.compile(r"^([A-Za-z]+)[\s_-]*(\d+)$")
+
+
+def string_id_parts(value: Any) -> tuple[str, int] | None:
+    """Letter and number of a String ID, such as A_01.
+
+    The letter is the string. The number is its order inside that string.
+    """
+    match = _STRING_ID.fullmatch(str(value or "").strip())
+    if match is None:
+        return None
+    return match.group(1).casefold(), int(match.group(2))
+
+
 def string_id_groups(items: list[FoundationInput]) -> list[list[int]]:
-    """Indexes of included cables that share a String ID, in sheet order."""
-    return attribute_groups(items, "String ID")
+    """Indexes that share the letter of a String ID, ordered by its number.
+
+    A blank value, or a value without a letter and a number, is not grouped.
+    A letter used once is not returned.
+    """
+    buckets: dict[str, list[tuple[int, int]]] = {}
+    order: list[str] = []
+    for index, item in enumerate(items):
+        parts = string_id_parts(attribute_value(item, "String ID"))
+        if parts is None:
+            continue
+        letter, number = parts
+        if letter not in buckets:
+            buckets[letter] = []
+            order.append(letter)
+        buckets[letter].append((number, index))
+    groups: list[list[int]] = []
+    for letter in order:
+        ranked = [index for _number, index in sorted(buckets[letter])]
+        if len(ranked) > 1:
+            groups.append(ranked)
+    return groups
 
 
 def string_blocks(items: list[FoundationInput], constraints: list | None = None) -> list[list[int]]:
-    """String ID blocks that stay together, in sheet order."""
-    return sequence_blocks(items, constraints, "String ID")
+    """String blocks that stay together, in number order.
+
+    Locations that a hard installed-first rule takes are removed. The locations
+    that remain stay one block, still ordered by the number after the letter.
+    A block of one is dropped.
+    """
+    reserved = _installed_first_ids(items, constraints or [])
+    blocks: list[list[int]] = []
+    for indexes in string_id_groups(items):
+        kept = [index for index in indexes if items[index].foundation_id not in reserved]
+        if len(kept) > 1:
+            blocks.append(kept)
+    return blocks
 
 
 def _installed_first_ids(items: list[FoundationInput], constraints: list) -> set[str]:

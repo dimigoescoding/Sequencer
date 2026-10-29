@@ -230,6 +230,8 @@ def solve_programme(
 
 
 def _package(constraint: ConstraintInput) -> str:
+    if getattr(constraint, "constraint_type", "") == "string_id_sequence":
+        return "WTG"
     package = str(getattr(constraint, "package", "") or "FOU").strip().upper()
     if package not in {"FOU", "IAC", "WTG"}:
         return "FOU"
@@ -1345,33 +1347,54 @@ class _Builder:
         self._ordered_blocks(loop_blocks(self.included, self.constraints), constraint, "loop")
 
     def _string_sequence(self, constraint: ConstraintInput) -> None:
-        self._ordered_blocks(string_blocks(self.included, self.constraints), constraint, "string")
+        self._ordered_blocks(
+            string_blocks(self.included, self.constraints),
+            constraint,
+            "string",
+            one_trip=False,
+        )
 
-    def _ordered_blocks(self, groups: list[list[int]], constraint: ConstraintInput, prefix: str) -> None:
+    def _ordered_blocks(
+        self,
+        groups: list[list[int]],
+        constraint: ConstraintInput,
+        prefix: str,
+        *,
+        one_trip: bool = True,
+    ) -> None:
         if not groups or self.n < 2:
             return
         if constraint.enforcement == "hard":
             for indexes in groups:
                 for left, right in zip(indexes, indexes[1:], strict=False):
                     self.model.Add(self.position_of[right] == self.position_of[left] + 1)
-                    self.model.Add(self.trip_of[right] == self.trip_of[left])
+                    if one_trip:
+                        self.model.Add(self.trip_of[right] == self.trip_of[left])
             return
         terms = []
-        span = (self.n - 1) + self.n
+        position_span = self.n - 1
+        trip_span = self.n if one_trip else 0
         for indexes in groups:
             for left, right in zip(indexes, indexes[1:], strict=False):
                 gap = self._int(1 - self.n, self.n - 1, f"{prefix}gap")
                 self.model.Add(gap == self.position_of[right] - self.position_of[left] - 1)
                 deviation = self._int(0, self.n - 1, f"{prefix}dev")
                 self.model.AddAbsEquality(deviation, gap)
-                same_trip = self._bool(f"{prefix}same")
-                self.model.Add(self.trip_of[right] == self.trip_of[left]).OnlyEnforceIf(same_trip)
-                self.model.Add(self.trip_of[right] != self.trip_of[left]).OnlyEnforceIf(
-                    same_trip.Not()
-                )
-                terms.append(deviation + (1 - same_trip) * self.n)
+                if one_trip:
+                    same_trip = self._bool(f"{prefix}same")
+                    self.model.Add(self.trip_of[right] == self.trip_of[left]).OnlyEnforceIf(
+                        same_trip
+                    )
+                    self.model.Add(self.trip_of[right] != self.trip_of[left]).OnlyEnforceIf(
+                        same_trip.Not()
+                    )
+                    terms.append(deviation + (1 - same_trip) * self.n)
+                else:
+                    terms.append(deviation)
         if terms:
-            self._penalise(sum(terms), span * len(terms), constraint.severity)
+            self._penalise(
+                sum(terms), max(position_span + trip_span, 1) * len(terms), constraint.severity
+            )
 
     def _distance(self, constraint: ConstraintInput) -> None:
         """Minimise every consecutive foundation-to-foundation leg. Harbour is excluded."""

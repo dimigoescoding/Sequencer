@@ -26,8 +26,10 @@
                 {% if constraint.constraint_type == "package_buffer" %}
                 <option value="IAC" {% if constraint.package == "IAC" %}selected{% endif %}>IAC</option>
                 <option value="WTG" {% if constraint.package == "WTG" %}selected{% endif %}>WTG</option>
-                {% elif constraint.constraint_type == "loop_id_sequence" or constraint.constraint_type == "string_id_sequence" %}
+                {% elif constraint.constraint_type == "loop_id_sequence" %}
                 <option value="IAC" {% if constraint.package == "IAC" %}selected{% endif %}>IAC</option>
+                {% elif constraint.constraint_type == "string_id_sequence" %}
+                <option value="WTG" {% if constraint.package == "WTG" %}selected{% endif %}>WTG</option>
                 {% else %}
                 <option value="FOU" {% if constraint.package == "FOU" %}selected{% endif %}>FOU</option>
                 <option value="IAC" {% if constraint.package == "IAC" %}selected{% endif %}>IAC</option>
