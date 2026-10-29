@@ -4,6 +4,7 @@ from django.http import HttpResponse
 from django.shortcuts import render
 
 from apps.access import owned_run
+from apps.exports.services.report import ReportNotAvailable, build_run_report, report_filename
 from apps.exports.services.workbook import build_run_workbook, export_filename
 from apps.optimisation.services.buffer import buffer_column, programme_inputs
 from apps.optimisation.services.progress import progress_chart
@@ -81,6 +82,23 @@ def run_visual(request, run_id: int):
         return HttpResponse("This run has no visual to download.", status=404)
     response = HttpResponse(page, content_type="text/html; charset=utf-8")
     response["Content-Disposition"] = f'attachment; filename="{visual_filename(run)}"'
+    return response
+
+
+@login_required
+def run_report(request, run_id: int):
+    run = owned_run(request.user, run_id)
+    if not run.approved:
+        return HttpResponse("A report is available only for a successful run.", status=404)
+    try:
+        payload = build_run_report(run)
+    except ReportNotAvailable:
+        return HttpResponse("A report is available only for a successful run.", status=404)
+    response = HttpResponse(
+        payload,
+        content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{report_filename(run)}"'
     return response
 
 
