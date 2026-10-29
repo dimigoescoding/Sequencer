@@ -6,6 +6,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from apps.access import owned_project, owned_scenario
+from apps.constraints.library import display_constraints
 from apps.optimisation.services.cancellation import cancel
 from apps.optimisation.services.runner import (
     SolveBlocked,
@@ -199,7 +200,7 @@ def generate(request, project_id: int, scenario_id: int):
             "project": scenario.project,
             "scenario": scenario,
             "conflicts": conflicts,
-            "constraints": scenario.constraints.filter(active=True),
+            "constraints": display_constraints(scenario.constraints.filter(active=True)),
         },
     )
 

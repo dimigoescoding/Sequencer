@@ -36,6 +36,7 @@
   <li class="nav-item"><a class="nav-link {% if tab == 'trips' %}active{% endif %}" href="{% querystring tab='trips' %}">Trip summary</a></li>
   <li class="nav-item"><a class="nav-link {% if tab == 'validation' %}active{% endif %}" href="{% querystring tab='validation' %}">Validation</a></li>
   <li class="nav-item"><a class="nav-link {% if tab == 'visual' %}active{% endif %}" href="{% querystring tab='visual' %}">Visual</a></li>
+  <li class="nav-item"><a class="nav-link {% if tab == 'graph' %}active{% endif %}" href="{% querystring tab='graph' %}">Graph</a></li>
 </ul>
 <div class="card border-top-0"><div class="card-body">
   {% if tab == 'trips' %}
@@ -69,6 +70,9 @@
         <h2 class="h5 mb-1">Installation sequence</h2>
         <p class="small text-secondary mb-0">Easting/Northing · equal scale · calendar time · pizza per location{% if timelapse.within_trip %} · within-trip {{ timelapse.within_trip }}{% endif %}</p>
       </div>
+      {% if timelapse.activities %}
+        <a class="btn btn-outline-primary" href="{% url 'optimisation:visual' run.pk %}">Download HTML</a>
+      {% endif %}
     </div>
     {% if timelapse.activities %}
       <div id="timelapse-stage" class="timelapse-stage">
@@ -100,6 +104,33 @@
       <p class="empty-state">{{ timelapse.notice }}</p>
     {% else %}
       <p class="empty-state">No sequence was stored, so there is nothing to plot.</p>
+    {% endif %}
+  {% elif tab == 'graph' %}
+    <h2 class="h5 mb-1">Cumulative progress</h2>
+    <p class="small text-secondary">Number installed against time. Sequence position 1 uses programme slot 1, position 2 uses slot 2, and so on. A location is counted when that activity ends.</p>
+    {% if not chart %}
+      <p class="empty-state">No programme end dates are stored for this sequence, so the progress graph is not drawn.</p>
+    {% else %}
+      <svg class="progress-chart" viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-label="Cumulative number installed over time">
+        <line class="axis" x1="{{ chart.axis_left }}" y1="{{ chart.axis_top }}" x2="{{ chart.axis_left }}" y2="{{ chart.axis_bottom }}"></line>
+        <line class="axis" x1="{{ chart.axis_left }}" y1="{{ chart.axis_bottom }}" x2="{{ chart.axis_right }}" y2="{{ chart.axis_bottom }}"></line>
+        {% for tick in chart.yticks %}
+          <text class="tick" x="{{ chart.tick_x }}" y="{{ tick.y }}" text-anchor="end" dominant-baseline="middle">{{ tick.label }}</text>
+        {% endfor %}
+        {% for tick in chart.xticks %}
+          <text class="tick" x="{{ tick.x }}" y="{{ chart.tick_y }}" text-anchor="middle">{{ tick.label }}</text>
+        {% endfor %}
+        <text class="tick" x="{{ chart.label_x }}" y="{{ chart.label_y }}" text-anchor="middle" transform="rotate(-90 {{ chart.label_x }} {{ chart.label_y }})" font-weight="bold">Number installed</text>
+        <text class="tick" x="{{ chart.time_x }}" y="{{ chart.time_y }}" text-anchor="middle" font-weight="bold">Time</text>
+        {% for series in chart.series %}
+          <polyline points="{{ series.points }}" fill="none" stroke="{{ series.color }}" stroke-width="2.5" stroke-linejoin="round"></polyline>
+        {% endfor %}
+      </svg>
+      <div class="d-flex flex-wrap gap-3 small mt-2">
+        {% for series in chart.series %}
+          <span><span class="progress-swatch" style="background: {{ series.color }}"></span>{{ series.name }} {{ series.total }}</span>
+        {% endfor %}
+      </div>
     {% endif %}
   {% else %}
     <form class="row g-2 mb-3" method="get">

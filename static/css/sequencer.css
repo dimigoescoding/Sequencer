@@ -119,6 +119,57 @@ body {
   color: #52606d;
 }
 
+.help-flow {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+  max-width: 36rem;
+}
+
+.help-flow li {
+  position: relative;
+  margin: 0 0 0.85rem;
+  padding: 0.7rem 0.9rem 0.7rem 2.5rem;
+  background: #fff;
+  border: 1px solid var(--sq-line);
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.help-flow li span {
+  position: absolute;
+  left: 0.75rem;
+  color: var(--sq-navy);
+}
+
+.help-flow li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 1.15rem;
+  bottom: -0.85rem;
+  height: 0.85rem;
+  border-left: 2px solid #8aa0b5;
+}
+
+.progress-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #fbfcfe;
+  border: 1px solid var(--sq-line);
+  border-radius: 8px;
+}
+
+.progress-chart .tick { fill: #52606d; font-size: 12px; }
+.progress-chart .axis { stroke: #8aa0b5; stroke-width: 1; }
+.progress-swatch {
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  margin-right: 0.35em;
+  vertical-align: middle;
+}
+
 .app-sidebar {
   position: fixed;
   top: 0;

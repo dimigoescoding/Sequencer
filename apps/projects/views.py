@@ -4,6 +4,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from apps.access import owned_project
+from apps.constraints.library import CONSTRAINT_TYPES, TYPE_ORDER
 from apps.optimisation.models import OptimisationRun
 from apps.projects.forms import ProjectForm
 from apps.projects.models import Project
@@ -97,6 +98,16 @@ def project_vessel(request, project_id: int):
     project = owned_project(request.user, project_id)
     scenarios = project.scenarios.select_related("vessel_settings")
     return render(request, "projects/vessel.html", {"project": project, "scenarios": scenarios})
+
+
+@login_required
+def project_help(request, project_id: int):
+    project = owned_project(request.user, project_id)
+    library = [
+        {"label": CONSTRAINT_TYPES[key]["label"], "summary": CONSTRAINT_TYPES[key]["summary"]}
+        for key in TYPE_ORDER
+    ]
+    return render(request, "projects/help.html", {"project": project, "library": library})
 
 
 @login_required
