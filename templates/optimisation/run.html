@@ -10,7 +10,12 @@
     <p class="mb-1">{{ project.name }} · {{ scenario.name }} · dataset v{{ run.dataset_version.version_number }}</p>
     <p class="mb-1">{{ run.created_at|date:"Y-m-d H:i" }} · runtime {{ run.runtime_seconds|floatformat:2 }} s · objective {{ run.objective_value|default:"—" }}</p>
   </div>
-  <a class="btn btn-outline-primary" href="{% url 'optimisation:export' run.pk %}">Export Excel</a>
+  <div class="d-flex gap-2">
+    {% if run.approved %}
+      <a class="btn btn-outline-primary" href="{% url 'optimisation:report' run.pk %}">Download report</a>
+    {% endif %}
+    <a class="btn btn-outline-primary" href="{% url 'optimisation:export' run.pk %}">Export Excel</a>
+  </div>
 </div>
 {% if run.status == "INVALID" %}
   <div class="alert alert-danger">This run failed independent hard validation. It is not an approved solution. Diagnostic rows are preserved. No hard constraint was relaxed.</div>
