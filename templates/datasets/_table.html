@@ -78,7 +78,7 @@
         {% if not wtgs %}<p class="empty-state">No WTG rows match this filter.</p>{% else %}
           <div class="foundation-scroll"><table class="table table-sm table-striped mb-0">
             <thead><tr>
-              <th>Row</th><th>WTG ID</th><th>Include</th><th>Structure</th><th>Easting</th><th>Northing</th><th>Jacking difficulty WTG</th>
+              <th>Row</th><th>WTG ID</th><th>Include</th><th>Structure</th><th>Easting</th><th>Northing</th><th>String ID</th><th>Jacking difficulty WTG</th>
             </tr></thead>
             <tbody>
               {% for row in wtgs %}
@@ -89,6 +89,7 @@
                   <td>{{ row.structure|default:"—" }}</td>
                   <td>{{ row.easting_m|default:"—" }}</td>
                   <td>{{ row.northing_m|default:"—" }}</td>
+                  <td>{{ row.string_label|default:"—" }}</td>
                   <td>{{ row.jacking_difficulty|default:"—" }}</td>
                 </tr>
               {% endfor %}

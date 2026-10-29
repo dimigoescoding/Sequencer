@@ -49,6 +49,8 @@ def find_programme_conflicts(
     """Check each package with its own trip limit. An empty package is skipped."""
 
     def package_of(constraint: ConstraintInput) -> str:
+        if getattr(constraint, "constraint_type", "") == "string_id_sequence":
+            return "WTG"
         package = str(getattr(constraint, "package", "") or "FOU").strip().upper()
         return package if package in {"FOU", "IAC", "WTG"} else "FOU"
 
@@ -252,6 +254,8 @@ def _apply_hard(
     count = len(included)
     trips = required_trips(count, capacity)
 
+    if kind == "string_id_sequence":
+        return
     if kind == "loop_id_sequence":
         for indexes in loop_blocks(included, constraints):
             if len(indexes) > capacity:

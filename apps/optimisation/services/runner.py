@@ -19,6 +19,7 @@ from apps.datasets.services.mapping import (
 from apps.optimisation.models import OptimisationRun, SequenceResult, TripResult, ValidationResult
 from apps.optimisation.services.between_trips import optimise_trip_connections
 from apps.optimisation.services.buffer import apply_buffer_checks
+from apps.optimisation.services.cancellation import begin, finish, was_cancelled
 from apps.optimisation.services.conflicts import find_programme_conflicts
 from apps.optimisation.services.evaluation import evaluate, merge_evaluations
 from apps.optimisation.services.scaling import MAX_SOLVER_TIME_LIMIT_SECONDS, SOLVER_SEED
@@ -36,6 +37,11 @@ class SolveBlocked(Exception):
 class SolveBusy(Exception):
     def __init__(self) -> None:
         super().__init__("A sequence is already being generated.")
+
+
+class SolveCancelled(Exception):
+    def __init__(self) -> None:
+        super().__init__("The run was cancelled. No sequence was stored.")
 
 
 _solve_lock = threading.Lock()
@@ -141,12 +147,15 @@ def blocking_messages(scenario: Scenario) -> list[str]:
     return messages
 
 
-def execute(scenario: Scenario) -> OptimisationRun:
+def execute(scenario: Scenario, cancel_token: str = "") -> OptimisationRun:
     if not _solve_lock.acquire(blocking=False):
         raise SolveBusy()
     try:
+        if not begin(cancel_token):
+            raise SolveCancelled()
         return _execute(scenario)
     finally:
+        finish(cancel_token)
         _solve_lock.release()
 
 
@@ -163,11 +172,15 @@ def _execute(scenario: Scenario) -> OptimisationRun:
         status, objective, runtime, message, campaigns = solve_programme(
             foundations, cables, turbines, vessel, constraints, programme
         )
+        if status == "CANCELLED" or was_cancelled():
+            raise SolveCancelled()
         for campaign in campaigns:
             if campaign.package == "FOU" and campaign.order and not _iac_buffer(constraints):
                 campaign.order = optimise_trip_connections(
                     campaign.order, foundations, campaign.vessel, campaign.constraints
                 )
+    except SolveCancelled:
+        raise
     except Exception as exc:
         status, objective, runtime, message, campaigns = (
             "ERROR",

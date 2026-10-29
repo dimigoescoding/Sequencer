@@ -62,6 +62,8 @@ class Constraint(models.Model):
         parameters = self.parameters_json or {}
         if self.constraint_type == "loop_id_sequence":
             return "Loop ID in IAC sheet order"
+        if self.constraint_type == "string_id_sequence":
+            return "String ID letter and number on the WTG sheet"
         if self.constraint_type == "package_buffer":
             if parameters.get("mode") == "maximize":
                 return "maximize"

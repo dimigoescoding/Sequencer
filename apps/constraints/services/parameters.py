@@ -387,6 +387,11 @@ def validate_parameters(
             errors.append("Loop ID sequence requires the Loop ID column on the IAC sheet.")
         return errors
 
+    if constraint_type == "string_id_sequence":
+        if "String ID" not in columns_present:
+            errors.append("String ID sequence requires the String ID column on the WTG sheet.")
+        return errors
+
     if constraint_type == "package_buffer":
         mode = parameters.get("mode")
         if mode not in {"minimum", "maximize"}:

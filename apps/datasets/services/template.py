@@ -43,6 +43,7 @@ WTG_HEADERS = (
     "Structure",
     "Easting",
     "Northing",
+    "String ID",
     "Jacking difficulty WTG",
 )
 

@@ -116,6 +116,15 @@ CONSTRAINT_TYPES: dict[str, dict[str, str]] = {
             "any order. A blank Loop ID is not grouped."
         ),
     },
+    "string_id_sequence": {
+        "label": "String ID sequence",
+        "summary": (
+            "WTG locations that share the letter of a String ID are installed one after another. "
+            "The number after the letter sets that order. A hard rule that installs some of them "
+            "first takes those locations out. The locations that remain stay one uninterrupted block. "
+            "Different letters may come in any order. A blank String ID is not grouped."
+        ),
+    },
     "package_buffer": {
         "label": "Package buffer",
         "summary": (

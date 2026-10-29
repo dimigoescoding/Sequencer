@@ -143,6 +143,8 @@ def _edit_level(request, constraint):
         package_choices = [("IAC", "IAC"), ("WTG", "WTG")]
     elif constraint.constraint_type == "loop_id_sequence":
         package_choices = [("IAC", "IAC")]
+    elif constraint.constraint_type == "string_id_sequence":
+        package_choices = [("WTG", "WTG")]
     form = ConstraintLevelForm(
         request.POST or None,
         package_choices=package_choices,

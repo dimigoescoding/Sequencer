@@ -61,6 +61,11 @@ class ConstraintForm(forms.Form):
             self.fields["package"].initial = "IAC"
             self.fields["package"].required = True
             self.fields["package"].help_text = "Loop ID is read from the IAC sheet."
+        if self.constraint_type == "string_id_sequence":
+            self.fields["package"].choices = [("WTG", "WTG")]
+            self.fields["package"].initial = "WTG"
+            self.fields["package"].required = True
+            self.fields["package"].help_text = "String ID is read from the WTG sheet."
         if self.constraint_type == "package_buffer":
             self.fields["package"].choices = [("IAC", "IAC"), ("WTG", "WTG")]
             self.fields["package"].initial = "IAC"
@@ -367,6 +372,8 @@ class ConstraintForm(forms.Form):
             return {"include_harbour_legs": False}
         if kind == "loop_id_sequence":
             return {"attribute": "Loop ID"}
+        if kind == "string_id_sequence":
+            return {"attribute": "String ID"}
         if kind == "package_buffer":
             if cleaned.get("mode") == "maximize":
                 return {"mode": "maximize"}

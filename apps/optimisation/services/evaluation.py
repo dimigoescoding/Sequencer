@@ -10,7 +10,13 @@ from collections import defaultdict
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 
-from apps.constraints.services.matching import loop_blocks, loop_id_groups, matching_foundations
+from apps.constraints.services.matching import (
+    loop_blocks,
+    loop_id_groups,
+    matching_foundations,
+    string_blocks,
+    string_id_groups,
+)
 from apps.optimisation.services.geometry import (
     positions_in_trip_window,
     required_trips,
@@ -359,8 +365,32 @@ def _check_constraint(
     if kind == "package_buffer":
         return 0, set(), set(), set(), set()
     if kind == "loop_id_sequence":
-        return _loop_sequence(
-            constraint, included, placements, add, governing, penalties, constraints
+        return _id_sequence(
+            constraint,
+            included,
+            placements,
+            add,
+            governing,
+            penalties,
+            groups=loop_id_groups(included),
+            blocks=loop_blocks(included, constraints),
+            title="Loop ID sequence",
+            label="Loop ID",
+            one_trip=True,
+        )
+    if kind == "string_id_sequence":
+        return _id_sequence(
+            constraint,
+            included,
+            placements,
+            add,
+            governing,
+            penalties,
+            groups=string_id_groups(included),
+            blocks=string_blocks(included, constraints),
+            title="String ID sequence",
+            label="String ID",
+            one_trip=False,
         )
     add(
         constraint.constraint_type,
@@ -1028,33 +1058,53 @@ def _avoid_first_trips(constraint, placements, vessel, add, governing, penalties
     return penalty, set(), set(), set(), set()
 
 
-def _loop_sequence(constraint, included, placements, add, governing, penalties, constraints):
-    groups = loop_id_groups(included)
-    blocks = loop_blocks(included, constraints)
+def _id_sequence(
+    constraint,
+    included,
+    placements,
+    add,
+    governing,
+    penalties,
+    *,
+    groups,
+    blocks,
+    title,
+    label,
+    one_trip,
+):
     placed = {item.foundation.foundation_id: item for item in placements}
     members = [included[index].foundation_id for indexes in blocks for index in indexes]
     _mark(governing, members, constraint.name)
     if not groups:
         add(
-            "Loop ID sequence",
+            title,
             constraint.name,
-            "No shared Loop ID",
+            f"No shared {label}",
             "Nothing to keep together",
             "Passed",
             [],
-            "A Loop ID used once, or left blank, is not grouped.",
+            f"A {label} used once, or left blank, is not grouped."
+            if one_trip
+            else "Locations that share the letter of a String ID form one block. "
+            "The number after the letter sets their order. A blank value, a value without "
+            "that number, or a letter used once, is not grouped.",
         )
         return _empty()
     if not blocks:
         add(
-            "Loop ID sequence",
+            title,
             constraint.name,
-            "No remaining Loop ID block",
-            "Another hard rule installs the grouped cables first",
+            f"No remaining {label} block",
+            "Another hard rule installs the grouped cables first"
+            if one_trip
+            else "Another hard rule installs the grouped locations first",
             "Passed",
             [],
             "A hard installed-first rule takes those cables out of the block. "
-            "Fewer than two cables remain to install together.",
+            "Fewer than two cables remain to install together."
+            if one_trip
+            else "A hard installed-first rule takes those locations out of the block. "
+            "Fewer than two locations remain to install together.",
         )
         return _empty()
     broken: list[str] = []
@@ -1066,34 +1116,48 @@ def _loop_sequence(constraint, included, placements, add, governing, penalties, 
             left = placed[left_id]
             right = placed[right_id]
             gap = abs(right.sequence - left.sequence - 1)
-            split = 0 if left.trip == right.trip else count
+            split = 0 if not one_trip or left.trip == right.trip else count
             if gap or split:
                 broken.extend([left_id, right_id])
             raw += gap + split
     affected = list(dict.fromkeys(broken))
     if constraint.enforcement == "hard":
+        if one_trip:
+            respected = (
+                f"Cables that share a {label} follow the IAC sheet inside one trip. "
+                "Cables taken by a hard installed-first rule stay with that rule."
+            )
+            target = "IAC sheet order, one after another, inside one trip"
+        else:
+            respected = (
+                "Locations that share a string letter follow the number after that letter, "
+                "one after another. Locations taken by a hard installed-first rule stay with that rule."
+            )
+            target = "Number order, one after another"
         add(
-            "Loop ID sequence",
+            title,
             constraint.name,
-            "IAC sheet order, one after another, inside one trip",
+            target,
             "Respected" if not affected else "Broken: " + ", ".join(affected),
             "Passed" if not affected else "Failed",
             affected,
-            "Cables that share a Loop ID follow the IAC sheet inside one trip. "
-            "Cables taken by a hard installed-first rule stay with that rule."
+            respected
             if not affected
-            else "The remaining Loop ID block is broken. No hard constraint was relaxed.",
+            else f"The remaining {label} block is broken. No hard constraint was relaxed.",
         )
         return 0, set(affected), set(), set(), set()
     links = sum(len(indexes) - 1 for indexes in blocks)
-    max_raw = max(links * ((count - 1) + count), 1)
+    step = (count - 1) + (count if one_trip else 0)
+    max_raw = max(links * step, 1)
     penalty = scaled_penalty(raw, max_raw, constraint.severity or 0) if raw else 0
     for foundation_id in affected:
         penalties[foundation_id] += penalty
     add(
-        "Loop ID sequence",
+        title,
         constraint.name,
-        "Prefer the IAC sheet order inside one trip",
+        "Prefer the IAC sheet order inside one trip"
+        if one_trip
+        else "Prefer the string number order, one after another",
         f"breaks={len(affected)}; penalty={penalty}",
         "Soft trade-off" if penalty else "Passed",
         affected,
