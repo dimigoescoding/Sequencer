@@ -22,6 +22,7 @@ from apps.optimisation.services.buffer import apply_buffer_checks
 from apps.optimisation.services.cancellation import begin, finish, was_cancelled
 from apps.optimisation.services.conflicts import find_programme_conflicts
 from apps.optimisation.services.evaluation import evaluate, merge_evaluations
+from apps.optimisation.services.memory_cap import release_solver_heap, solver_address_cap
 from apps.optimisation.services.scaling import MAX_SOLVER_TIME_LIMIT_SECONDS, SOLVER_SEED
 from apps.optimisation.services.solver import solve_programme
 from apps.optimisation.services.types import ConstraintInput, ValidationRow, VesselConfig
@@ -169,9 +170,10 @@ def _execute(scenario: Scenario) -> OptimisationRun:
     started = timezone.now()
     campaigns = []
     try:
-        status, objective, runtime, message, campaigns = solve_programme(
-            foundations, cables, turbines, vessel, constraints, programme
-        )
+        with solver_address_cap():
+            status, objective, runtime, message, campaigns = solve_programme(
+                foundations, cables, turbines, vessel, constraints, programme
+            )
         if status == "CANCELLED" or was_cancelled():
             raise SolveCancelled()
         for campaign in campaigns:
@@ -181,6 +183,15 @@ def _execute(scenario: Scenario) -> OptimisationRun:
                 )
     except SolveCancelled:
         raise
+    except MemoryError:
+        release_solver_heap()
+        status, objective, runtime, message, campaigns = (
+            "ERROR",
+            None,
+            (timezone.now() - started).total_seconds(),
+            "Insufficient memory.",
+            [],
+        )
     except Exception as exc:
         status, objective, runtime, message, campaigns = (
             "ERROR",
