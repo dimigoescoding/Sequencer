@@ -29,6 +29,17 @@ _FREE_INSTANCE_CEILING = 600 * 1024 * 1024
 _SOLVER_ADDRESS_CAP = 700 * 1024 * 1024
 
 
+def instance_limit_bytes() -> int | None:
+    """Memory limit of this process, from its cgroup or from MemTotal."""
+    return _instance_limit_bytes()
+
+
+def exceeds_free_instance() -> bool:
+    """True when this process has more memory than the 512 MB Render service."""
+    limit = _instance_limit_bytes()
+    return limit is not None and limit > _FREE_INSTANCE_CEILING
+
+
 def address_cap_bytes() -> int | None:
     """Virtual-memory cap for the solver, or None when this instance is larger."""
     limit = _instance_limit_bytes()
