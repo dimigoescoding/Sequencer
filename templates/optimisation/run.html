@@ -10,7 +10,7 @@
     <h1 class="h3">Run {{ run.pk }}</h1>
     <p class="mb-1">{{ project.name }} · {{ scenario.name }} · dataset v{{ run.dataset_version.version_number }}</p>
     <p class="mb-1">{{ run.created_at|date:"Y-m-d H:i" }} · runtime {{ run.runtime_seconds|floatformat:2 }} s · objective {{ run.objective_value|default:"—" }}</p>
-    <p class="mb-1">Real memory {% if run.peak_rss_mb != None %}{{ run.peak_rss_mb|floatformat:0 }} MB{% else %}—{% endif %} · address space {% if run.peak_address_mb != None %}{{ run.peak_address_mb|floatformat:0 }} MB{% else %}—{% endif %}</p>
+    <p class="mb-1">Real memory {% if run.peak_rss_mb != None %}{{ run.peak_rss_mb|floatformat:0 }} MB{% else %}—{% endif %} · address space {% if run.peak_address_mb != None %}{{ run.peak_address_mb|floatformat:0 }} MB{% else %}—{% endif %} · cap {% if run.vessel_snapshot.address_space_cap_mb %}{{ run.vessel_snapshot.address_space_cap_mb }} MB{% else %}—{% endif %}</p>
   </div>
   <div class="d-flex gap-2">
     {% if run.approved %}

@@ -208,6 +208,7 @@ def _copy_scenario(
         allow_partial_final_trip=settings.allow_partial_final_trip,
         base_maximum_trip_payload_t=settings.base_maximum_trip_payload_t,
         solver_time_limit_seconds=settings.solver_time_limit_seconds,
+        address_space_cap_mb=settings.address_space_cap_mb,
         transit_speed_knots=settings.transit_speed_knots,
         harbour_easting_m=settings.harbour_easting_m,
         harbour_northing_m=settings.harbour_northing_m,

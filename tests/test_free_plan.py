@@ -39,6 +39,7 @@ def test_settings_form_edits_trip_limits_and_solver_time():
             "max_foundations_per_trip": "6",
             "wtg_per_trip": "3",
             "solver_time_limit_seconds": "15",
+            "address_space_cap_mb": "1000",
         }
     )
     assert form.is_valid() is True
@@ -50,6 +51,7 @@ def test_settings_form_edits_trip_limits_and_solver_time():
             "max_foundations_per_trip": "4",
             "wtg_per_trip": "4",
             "solver_time_limit_seconds": "600",
+            "address_space_cap_mb": "1000",
         }
     )
     assert accepted.is_valid() is True
@@ -58,6 +60,7 @@ def test_settings_form_edits_trip_limits_and_solver_time():
             "max_foundations_per_trip": "60",
             "wtg_per_trip": "4",
             "solver_time_limit_seconds": "15",
+            "address_space_cap_mb": "1000",
         }
     )
     assert rejected.is_valid() is False
@@ -66,6 +69,7 @@ def test_settings_form_edits_trip_limits_and_solver_time():
             "max_foundations_per_trip": "4",
             "wtg_per_trip": "4",
             "solver_time_limit_seconds": "601",
+            "address_space_cap_mb": "1000",
         }
     )
     assert too_long.is_valid() is False

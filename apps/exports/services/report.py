@@ -29,6 +29,7 @@ _SETTINGS = (
     ("max_foundations_per_trip", "FOU per trip"),
     ("wtg_per_trip", "WTG per trip"),
     ("solver_time_limit_seconds", "Solver time limit (seconds)"),
+    ("address_space_cap_mb", "Address space cap (MB)"),
     ("allow_partial_final_trip", "Partial final trip"),
     ("base_maximum_trip_payload_t", "Base maximum trip payload (t)"),
     ("transit_speed_knots", "Transit speed (knots)"),

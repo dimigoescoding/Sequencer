@@ -6,7 +6,7 @@
 {% include "partials/scenario_nav.html" with snav="generate" %}
 <h1 class="h3">Generate sequence</h1>
 {% include "partials/render_plan.html" %}
-<p>Dataset {% if scenario.dataset_version %}v{{ scenario.dataset_version.version_number }}{% else %}not selected{% endif %}. Solver time limit {{ scenario.vessel_settings.solver_time_limit_seconds }} seconds. This page waits until the solver finishes, and only one sequence runs at a time.</p>
+<p>Dataset {% if scenario.dataset_version %}v{{ scenario.dataset_version.version_number }}{% else %}not selected{% endif %}. Solver time limit {{ scenario.vessel_settings.solver_time_limit_seconds }} seconds. Address space cap {{ scenario.vessel_settings.address_space_cap_mb }} MB. This page waits until the solver finishes, and only one sequence runs at a time.</p>
 {% if conflicts %}
   <div class="alert alert-danger">
     <strong>Direct conflicts block optimisation.</strong> The solver will not start and no constraint will be relaxed.

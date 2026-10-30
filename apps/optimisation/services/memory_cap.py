@@ -12,7 +12,7 @@ Measured on ``sequencer input v5.xlsx`` (50 FOU, 55 IAC, 50 WTG, 20 seconds):
   and 879 MB virtual, and passed 512 MB resident.
 
 A 700 MB virtual cap stopped that joint run at about 400 MB resident.
-The cap is 1000 MB virtual. The FOU sailing-distance run still finishes.
+The scenario setting chooses the cap. The default is 1000 MB virtual.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from pathlib import Path
 
 # Above this, the instance is not the free 512 MB web service.
 _FREE_INSTANCE_CEILING = 600 * 1024 * 1024
-_SOLVER_ADDRESS_CAP = 1000 * 1024 * 1024
+DEFAULT_ADDRESS_CAP_MB = 1000
 
 
 def instance_limit_bytes() -> int | None:
@@ -41,18 +41,18 @@ def exceeds_free_instance() -> bool:
     return limit is not None and limit > _FREE_INSTANCE_CEILING
 
 
-def address_cap_bytes() -> int | None:
+def address_cap_bytes(cap_mb: int = DEFAULT_ADDRESS_CAP_MB) -> int | None:
     """Virtual-memory cap for the solver, or None when this instance is larger."""
     limit = _instance_limit_bytes()
     if limit is None or limit > _FREE_INSTANCE_CEILING:
         return None
-    return _SOLVER_ADDRESS_CAP
+    return int(cap_mb) * 1024 * 1024
 
 
 @contextmanager
-def solver_address_cap() -> Iterator[None]:
+def solver_address_cap(cap_mb: int = DEFAULT_ADDRESS_CAP_MB) -> Iterator[None]:
     """Apply the free-instance cap for one solver call, then restore it."""
-    cap = address_cap_bytes()
+    cap = address_cap_bytes(cap_mb)
     if cap is None:
         yield
         return

@@ -161,6 +161,7 @@ def test_user_can_edit_constraint_level_add_a_constraint_and_set_solver_time(cli
             "max_foundations_per_trip": "5",
             "wtg_per_trip": "3",
             "solver_time_limit_seconds": "12",
+            "address_space_cap_mb": "1000",
         },
     )
     assert saved.status_code == 302
@@ -174,6 +175,7 @@ def test_user_can_edit_constraint_level_add_a_constraint_and_set_solver_time(cli
             "max_foundations_per_trip": "5",
             "wtg_per_trip": "3",
             "solver_time_limit_seconds": "601",
+            "address_space_cap_mb": "1000",
         },
     )
     assert rejected.status_code == 200

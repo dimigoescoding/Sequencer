@@ -55,6 +55,7 @@ class VesselSettingsForm(forms.ModelForm):
             "allow_partial_final_trip": "When off, the included count must fill every trip.",
             "base_maximum_trip_payload_t": "Optional reference only. Add a payload constraint to enforce a limit. No default is assumed.",
             "solver_time_limit_seconds": "Stops the solver after this many seconds (1–600). A feasible result is not labelled optimal unless OR-Tools proves it.",
+            "address_space_cap_mb": "Reserved address space for the solver on the free service, from 100 to 8000 MB. Render still stops the site at 512 MB of real memory. The 2 GB plan does not use this cap.",
             "transit_speed_knots": "Recorded for audit. MVP 1 does not calculate transit time.",
             "harbour_easting_m": "Stored with the scenario. Harbour transit is not part of the sailing-distance objective.",
             "harbour_northing_m": "Stored with the scenario. Harbour transit is not part of the sailing-distance objective.",
@@ -70,6 +71,9 @@ class VesselSettingsForm(forms.ModelForm):
         self.fields["wtg_per_trip"].max_value = 20
         self.fields["solver_time_limit_seconds"].min_value = 1
         self.fields["solver_time_limit_seconds"].max_value = 600
+        self.fields["address_space_cap_mb"].label = "Address space cap (MB)"
+        self.fields["address_space_cap_mb"].min_value = 100
+        self.fields["address_space_cap_mb"].max_value = 8000
         apply_bootstrap(self)
 
     def clean_max_foundations_per_trip(self):
@@ -81,22 +85,32 @@ class VesselSettingsForm(forms.ModelForm):
     def clean_solver_time_limit_seconds(self):
         return _solver_time(self.cleaned_data["solver_time_limit_seconds"])
 
+    def clean_address_space_cap_mb(self):
+        return _address_cap(self.cleaned_data["address_space_cap_mb"])
+
 
 class ProgrammeSettingsForm(forms.ModelForm):
-    """FOU per trip, WTG per trip, and the shared solver time limit."""
+    """FOU per trip, WTG per trip, solver time, and the free-service address cap."""
 
     class Meta:
         model = VesselSettings
-        fields = ["max_foundations_per_trip", "wtg_per_trip", "solver_time_limit_seconds"]
+        fields = [
+            "max_foundations_per_trip",
+            "wtg_per_trip",
+            "solver_time_limit_seconds",
+            "address_space_cap_mb",
+        ]
         labels = {
             "max_foundations_per_trip": "FOU per trip",
             "wtg_per_trip": "WTG per trip",
             "solver_time_limit_seconds": "Solver time (seconds)",
+            "address_space_cap_mb": "Address space cap (MB)",
         }
         help_texts = {
             "max_foundations_per_trip": "Used only for FOU. Trip number and vessel position for foundations come from this capacity.",
             "wtg_per_trip": "Used only for WTG. IAC is ordered without a trip limit.",
             "solver_time_limit_seconds": "How long the one programme solve may run, from 1 to 600 seconds. The page waits until the run finishes.",
+            "address_space_cap_mb": "Reserved address space for the solver on the free service, from 100 to 8000 MB. The next run uses the saved value. Render still stops the site at 512 MB of real memory. The 2 GB plan does not use this cap.",
         }
 
     def __init__(self, *args, **kwargs) -> None:
@@ -107,6 +121,8 @@ class ProgrammeSettingsForm(forms.ModelForm):
         self.fields["wtg_per_trip"].max_value = 20
         self.fields["solver_time_limit_seconds"].min_value = 1
         self.fields["solver_time_limit_seconds"].max_value = 600
+        self.fields["address_space_cap_mb"].min_value = 100
+        self.fields["address_space_cap_mb"].max_value = 8000
         apply_bootstrap(self)
 
     def clean_max_foundations_per_trip(self):
@@ -117,6 +133,9 @@ class ProgrammeSettingsForm(forms.ModelForm):
 
     def clean_solver_time_limit_seconds(self):
         return _solver_time(self.cleaned_data["solver_time_limit_seconds"])
+
+    def clean_address_space_cap_mb(self):
+        return _address_cap(self.cleaned_data["address_space_cap_mb"])
 
 
 def _trip_capacity(value: int, label: str) -> int:
@@ -128,4 +147,10 @@ def _trip_capacity(value: int, label: str) -> int:
 def _solver_time(value: int) -> int:
     if value < 1 or value > 600:
         raise forms.ValidationError("Use a solver time limit from 1 to 600 seconds.")
+    return value
+
+
+def _address_cap(value: int) -> int:
+    if value < 100 or value > 8000:
+        raise forms.ValidationError("Use an address space cap from 100 to 8000 MB.")
     return value

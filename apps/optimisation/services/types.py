@@ -38,6 +38,7 @@ class VesselConfig:
     allow_partial_final_trip: bool
     base_maximum_trip_payload_t: Decimal | None = None
     solver_time_limit_seconds: int = 60
+    address_space_cap_mb: int = 1000
     transit_speed_knots: Decimal | None = None
     harbour_easting_m: Decimal | None = None
     harbour_northing_m: Decimal | None = None

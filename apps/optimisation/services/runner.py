@@ -77,6 +77,7 @@ def vessel_config(settings: VesselSettings) -> VesselConfig:
         allow_partial_final_trip=settings.allow_partial_final_trip,
         base_maximum_trip_payload_t=settings.base_maximum_trip_payload_t,
         solver_time_limit_seconds=time_limit,
+        address_space_cap_mb=settings.address_space_cap_mb,
         transit_speed_knots=settings.transit_speed_knots,
         harbour_easting_m=settings.harbour_easting_m,
         harbour_northing_m=settings.harbour_northing_m,
@@ -173,7 +174,7 @@ def _execute(scenario: Scenario) -> OptimisationRun:
     probe.start()
     try:
         try:
-            with solver_address_cap():
+            with solver_address_cap(vessel.address_space_cap_mb):
                 status, objective, runtime, message, campaigns = solve_programme(
                     foundations, cables, turbines, vessel, constraints, programme
                 )
@@ -356,6 +357,7 @@ def _vessel_snapshot(vessel: VesselConfig) -> dict[str, Any]:
         "allow_partial_final_trip": vessel.allow_partial_final_trip,
         "base_maximum_trip_payload_t": _json_number(vessel.base_maximum_trip_payload_t),
         "solver_time_limit_seconds": vessel.solver_time_limit_seconds,
+        "address_space_cap_mb": vessel.address_space_cap_mb,
         "transit_speed_knots": _json_number(vessel.transit_speed_knots),
         "harbour_easting_m": _json_number(vessel.harbour_easting_m),
         "harbour_northing_m": _json_number(vessel.harbour_northing_m),

@@ -49,6 +49,7 @@ class VesselSettings(models.Model):
         max_digits=14, decimal_places=3, null=True, blank=True
     )
     solver_time_limit_seconds = models.PositiveIntegerField(default=20)
+    address_space_cap_mb = models.PositiveIntegerField(default=1000)
     transit_speed_knots = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     harbour_easting_m = models.DecimalField(max_digits=16, decimal_places=3, null=True, blank=True)
     harbour_northing_m = models.DecimalField(max_digits=16, decimal_places=3, null=True, blank=True)
@@ -72,6 +73,14 @@ class VesselSettings(models.Model):
             models.CheckConstraint(
                 condition=models.Q(solver_time_limit_seconds__lte=600),
                 name="solver_time_limit_at_most_600",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(address_space_cap_mb__gte=100),
+                name="address_space_cap_at_least_100",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(address_space_cap_mb__lte=8000),
+                name="address_space_cap_at_most_8000",
             ),
         ]
 
