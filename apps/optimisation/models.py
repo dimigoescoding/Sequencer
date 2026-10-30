@@ -144,3 +144,13 @@ class ValidationResult(models.Model):
             models.Index(fields=["run", "status"]),
             models.Index(fields=["run", "display_order"]),
         ]
+
+
+class RenderPlanState(models.Model):
+    """The plan this app last asked Render to run. One row, shared by the service."""
+
+    desired = models.CharField(max_length=16, default="free")
+    error = models.TextField(blank=True)
+
+    def __str__(self) -> str:
+        return self.desired

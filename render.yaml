@@ -8,6 +8,7 @@ services:
   - type: web
     name: sequencer
     runtime: python
+    # Resting plan. The app can move this service to 1c-2g for one run, then return it here.
     plan: free
     buildCommand: "./build.sh"
     startCommand: "./start.sh"
@@ -34,6 +35,8 @@ services:
       - key: DJANGO_SUPERUSER_EMAIL
         sync: false
       - key: DJANGO_SUPERUSER_PASSWORD
+        sync: false
+      - key: RENDER_API_KEY
         sync: false
 
 databases:

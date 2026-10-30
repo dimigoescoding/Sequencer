@@ -7,6 +7,12 @@ from django.views.decorators.http import require_POST
 
 from apps.access import owned_project, owned_scenario
 from apps.optimisation.services.cancellation import cancel
+from apps.optimisation.services.render_plan import (
+    RenderPlanError,
+    plan_status,
+    request_paid_plan,
+    schedule_return_to_free,
+)
 from apps.optimisation.services.runner import (
     SolveBlocked,
     SolveBusy,
@@ -160,6 +166,7 @@ def generate(request, project_id: int, scenario_id: int):
             try:
                 run = execute(scenario, request.POST.get("cancel_token", ""))
             except SolveCancelled:
+                schedule_return_to_free()
                 messages.warning(request, "The run was cancelled. No sequence was stored.")
                 return _generate_target(request, page)
             except SolveBlocked as exc:
@@ -189,6 +196,7 @@ def generate(request, project_id: int, scenario_id: int):
                     )
                 else:
                     messages.warning(request, run.message)
+                schedule_return_to_free()
                 return _generate_target(
                     request, reverse("optimisation:detail", args=[run.pk])
                 )
@@ -210,6 +218,23 @@ def generate_cancel(request, project_id: int, scenario_id: int):
     owned_scenario(request.user, project_id, scenario_id)
     cancel(request.POST.get("cancel_token", ""))
     return HttpResponse(status=204)
+
+
+@login_required
+def render_plan(request, project_id: int, scenario_id: int):
+    owned_scenario(request.user, project_id, scenario_id)
+    return JsonResponse(plan_status())
+
+
+@login_required
+@require_POST
+def render_upgrade(request, project_id: int, scenario_id: int):
+    owned_scenario(request.user, project_id, scenario_id)
+    try:
+        request_paid_plan()
+    except RenderPlanError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    return JsonResponse({"ok": True})
 
 
 @login_required
