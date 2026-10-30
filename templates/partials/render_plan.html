@@ -1,9 +1,11 @@
 <div id="render-plan" class="d-flex flex-wrap align-items-center gap-2 mb-3"
      data-status-url="{% url 'scenarios:render_plan' project.pk scenario.pk %}">
   <span id="render-plan-indicator" class="badge text-bg-secondary">Render</span>
-  <span id="render-upgrade-wait" class="d-inline-flex align-items-center" hidden>
-    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-    <span class="ms-2">Please wait for memory upgrade.</span>
+  <span id="render-upgrade-wait" hidden>
+    <span class="d-inline-flex align-items-center">
+      <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+      <span class="ms-2">Please wait for memory upgrade.</span>
+    </span>
   </span>
   <span id="render-plan-note" class="small text-secondary" hidden></span>
   <span id="render-plan-error" class="small text-danger" hidden></span>
