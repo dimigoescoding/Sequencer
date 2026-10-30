@@ -20,6 +20,7 @@ from __future__ import annotations
 import ctypes
 import gc
 import resource
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -79,6 +80,58 @@ def release_solver_heap() -> None:
         ctypes.CDLL("libc.so.6").malloc_trim(0)
     except (OSError, AttributeError):
         pass
+
+
+class MemoryProbe:
+    """Peak real memory and address space while a solver call is running."""
+
+    def __init__(self) -> None:
+        self.peak_rss_bytes: int | None = None
+        self.peak_address_bytes: int | None = None
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        self.sample()
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=1)
+            self._thread = None
+        self.sample()
+
+    def sample(self) -> None:
+        reading = _proc_memory_bytes()
+        if reading is None:
+            return
+        rss, address = reading
+        self.peak_rss_bytes = rss if self.peak_rss_bytes is None else max(self.peak_rss_bytes, rss)
+        self.peak_address_bytes = (
+            address if self.peak_address_bytes is None else max(self.peak_address_bytes, address)
+        )
+
+    def _loop(self) -> None:
+        while not self._stop.wait(0.05):
+            self.sample()
+
+
+def _proc_memory_bytes() -> tuple[int, int] | None:
+    try:
+        lines = Path("/proc/self/status").read_text().splitlines()
+    except OSError:
+        return None
+    rss_kb = address_kb = None
+    for line in lines:
+        if line.startswith("VmRSS:"):
+            rss_kb = int(line.split()[1])
+        elif line.startswith("VmSize:"):
+            address_kb = int(line.split()[1])
+    if rss_kb is None or address_kb is None:
+        return None
+    return rss_kb * 1024, address_kb * 1024
 
 
 def _instance_limit_bytes() -> int | None:

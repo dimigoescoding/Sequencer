@@ -43,6 +43,8 @@ class OptimisationRun(models.Model):
     soft_tradeoff_count = models.PositiveIntegerField(default=0)
     vessel_snapshot = models.JSONField(default=dict)
     constraint_snapshot = models.JSONField(default=list)
+    peak_rss_bytes = models.PositiveBigIntegerField(null=True, blank=True)
+    peak_address_bytes = models.PositiveBigIntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
@@ -65,6 +67,18 @@ class OptimisationRun(models.Model):
             self.status in {self.Status.OPTIMAL, self.Status.FEASIBLE}
             and self.validation_status == "Passed"
         )
+
+    @property
+    def peak_rss_mb(self) -> float | None:
+        if self.peak_rss_bytes is None:
+            return None
+        return self.peak_rss_bytes / (1024 * 1024)
+
+    @property
+    def peak_address_mb(self) -> float | None:
+        if self.peak_address_bytes is None:
+            return None
+        return self.peak_address_bytes / (1024 * 1024)
 
 
 class SequenceResult(models.Model):

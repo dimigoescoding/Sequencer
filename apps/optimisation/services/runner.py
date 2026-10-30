@@ -22,7 +22,7 @@ from apps.optimisation.services.buffer import apply_buffer_checks
 from apps.optimisation.services.cancellation import begin, finish, was_cancelled
 from apps.optimisation.services.conflicts import find_programme_conflicts
 from apps.optimisation.services.evaluation import evaluate, merge_evaluations
-from apps.optimisation.services.memory_cap import release_solver_heap, solver_address_cap
+from apps.optimisation.services.memory_cap import MemoryProbe, release_solver_heap, solver_address_cap
 from apps.optimisation.services.scaling import MAX_SOLVER_TIME_LIMIT_SECONDS, SOLVER_SEED
 from apps.optimisation.services.solver import solve_programme
 from apps.optimisation.services.types import ConstraintInput, ValidationRow, VesselConfig
@@ -169,62 +169,68 @@ def _execute(scenario: Scenario) -> OptimisationRun:
     active = [item for item in constraints if item.active]
     started = timezone.now()
     campaigns = []
+    probe = MemoryProbe()
+    probe.start()
     try:
-        with solver_address_cap():
-            status, objective, runtime, message, campaigns = solve_programme(
-                foundations, cables, turbines, vessel, constraints, programme
-            )
-        if status == "CANCELLED" or was_cancelled():
-            raise SolveCancelled()
-        for campaign in campaigns:
-            if campaign.package == "FOU" and campaign.order and not _iac_buffer(constraints):
-                campaign.order = optimise_trip_connections(
-                    campaign.order, foundations, campaign.vessel, campaign.constraints
+        try:
+            with solver_address_cap():
+                status, objective, runtime, message, campaigns = solve_programme(
+                    foundations, cables, turbines, vessel, constraints, programme
                 )
-    except SolveCancelled:
-        raise
-    except MemoryError:
-        release_solver_heap()
-        status, objective, runtime, message, campaigns = (
-            "ERROR",
-            None,
-            (timezone.now() - started).total_seconds(),
-            "Insufficient memory.",
-            [],
-        )
-    except Exception as exc:
-        status, objective, runtime, message, campaigns = (
-            "ERROR",
-            None,
-            0,
-            f"The solver raised an error and no sequence was created: {exc.__class__.__name__}.",
-            [],
-        )
-    evaluation = None
-    run_status = status
-    solved = [campaign for campaign in campaigns if campaign.order]
-    if solved:
-        evaluation = merge_evaluations(
-            [
-                (
-                    campaign.package,
-                    evaluate(
-                        campaign.items,
-                        campaign.vessel,
-                        campaign.constraints,
-                        campaign.order,
-                    ),
-                )
-                for campaign in solved
-            ]
-        )
-        apply_buffer_checks(evaluation, solved, constraints, programme)
-        if evaluation.validation_status != "Passed":
-            run_status = "INVALID"
-            message = (
-                "The solver returned a sequence that failed independent hard validation. "
-                "The run is not an approved solution. No hard constraint was relaxed. " + message
+            if status == "CANCELLED" or was_cancelled():
+                raise SolveCancelled()
+            for campaign in campaigns:
+                if campaign.package == "FOU" and campaign.order and not _iac_buffer(constraints):
+                    campaign.order = optimise_trip_connections(
+                        campaign.order, foundations, campaign.vessel, campaign.constraints
+                    )
+        except SolveCancelled:
+            raise
+        except MemoryError:
+            probe.sample()
+            release_solver_heap()
+            status, objective, runtime, message, campaigns = (
+                "ERROR",
+                None,
+                (timezone.now() - started).total_seconds(),
+                "Insufficient memory.",
+                [],
             )
+        except Exception as exc:
+            status, objective, runtime, message, campaigns = (
+                "ERROR",
+                None,
+                0,
+                f"The solver raised an error and no sequence was created: {exc.__class__.__name__}.",
+                [],
+            )
+        evaluation = None
+        run_status = status
+        solved = [campaign for campaign in campaigns if campaign.order]
+        if solved:
+            evaluation = merge_evaluations(
+                [
+                    (
+                        campaign.package,
+                        evaluate(
+                            campaign.items,
+                            campaign.vessel,
+                            campaign.constraints,
+                            campaign.order,
+                        ),
+                    )
+                    for campaign in solved
+                ]
+            )
+            apply_buffer_checks(evaluation, solved, constraints, programme)
+            if evaluation.validation_status != "Passed":
+                run_status = "INVALID"
+                message = (
+                    "The solver returned a sequence that failed independent hard validation. "
+                    "The run is not an approved solution. No hard constraint was relaxed. " + message
+                )
+    finally:
+        probe.stop()
     return _persist(
         scenario,
         status=run_status,
@@ -238,6 +244,8 @@ def _execute(scenario: Scenario) -> OptimisationRun:
         vessel=vessel,
         constraints=constraints,
         started=started,
+        peak_rss_bytes=probe.peak_rss_bytes,
+        peak_address_bytes=probe.peak_address_bytes,
     )
 
 
@@ -255,6 +263,8 @@ def _persist(
     vessel,
     constraints,
     started,
+    peak_rss_bytes,
+    peak_address_bytes,
 ) -> OptimisationRun:
     # status may be INVALID after a hard-validation failure. solver_status stays
     # the value OR-Tools reported and is never rewritten as OPTIMAL.
@@ -287,6 +297,8 @@ def _persist(
             constraint_snapshot=[_constraint_snapshot(item) for item in constraints],
             started_at=started,
             finished_at=timezone.now(),
+            peak_rss_bytes=peak_rss_bytes,
+            peak_address_bytes=peak_address_bytes,
         )
         if evaluation and evaluation.sequence_rows:
             SequenceResult.objects.bulk_create(
