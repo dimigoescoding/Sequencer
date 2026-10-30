@@ -12,8 +12,7 @@ Measured on ``sequencer input v5.xlsx`` (50 FOU, 55 IAC, 50 WTG, 20 seconds):
   and 879 MB virtual, and passed 512 MB resident.
 
 A 700 MB virtual cap stopped that joint run at about 400 MB resident.
-The cap is 800 MB virtual so the same run can reach about 500 MB resident.
-That sits close to Render's 512 MB line. The FOU sailing-distance run still finishes.
+The cap is 1000 MB virtual. The FOU sailing-distance run still finishes.
 """
 
 from __future__ import annotations
@@ -27,7 +26,7 @@ from pathlib import Path
 
 # Above this, the instance is not the free 512 MB web service.
 _FREE_INSTANCE_CEILING = 600 * 1024 * 1024
-_SOLVER_ADDRESS_CAP = 800 * 1024 * 1024
+_SOLVER_ADDRESS_CAP = 1000 * 1024 * 1024
 
 
 def instance_limit_bytes() -> int | None:
