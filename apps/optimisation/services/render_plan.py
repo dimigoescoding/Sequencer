@@ -1,9 +1,8 @@
-"""Switch the one Render web service between Free and the 2 GB plan.
+"""Report whether this Render web service is on Free or the 2 GB plan.
 
-The live tier comes from the instance that is serving this process. The
-switch writes the web service plan in render.yaml and pushes that file to
-GitHub. Render applies it when the Blueprint syncs, which deploys the
-service. A run that finishes on the 2 GB instance writes the free plan back.
+The live tier comes from the instance that is serving this process. A GitHub
+push of render.yaml deploys new code and leaves the compute plan unchanged.
+A run that finishes on the 2 GB instance writes the free plan back.
 """
 
 from __future__ import annotations
@@ -24,6 +23,10 @@ from apps.optimisation.services.memory_cap import exceeds_free_instance
 
 PAID_PLAN = "1c-2g"
 FREE_PLAN = "free"
+_PLAN_UNCHANGED = (
+    "Render deployed the commit and left the service on the Free plan. "
+    "Change the plan with Edit on the Compute page."
+)
 _GITHUB = "https://api.github.com"
 _WEB_PLAN = re.compile(
     r"(?m)^([ \t]*# sequencer-web-plan\n[ \t]*plan:[ \t]*)(\S+)[ \t]*$"
@@ -46,6 +49,9 @@ def live_tier() -> str:
 def plan_status() -> dict:
     tier = live_tier()
     state = _state()
+    if tier == "free" and state.desired == PAID_PLAN:
+        _save(FREE_PLAN, _PLAN_UNCHANGED)
+        state = _state()
     return {
         "tier": tier,
         "switching": state.desired == PAID_PLAN and tier == "free",
@@ -56,18 +62,14 @@ def plan_status() -> dict:
 
 
 def request_paid_plan() -> None:
-    """Ask Render to deploy this service on 1c-2g."""
+    """Record that this service is still on the Free plan."""
     if not _on_render():
         raise RenderPlanError("Memory upgrade is available on the Render service.")
     if live_tier() == "paid":
         _save(PAID_PLAN, "")
         return
-    _save(PAID_PLAN, "")
-    try:
-        _switch(PAID_PLAN)
-    except RenderPlanError as exc:
-        _save(FREE_PLAN, str(exc))
-        raise
+    _save(FREE_PLAN, _PLAN_UNCHANGED)
+    raise RenderPlanError(_PLAN_UNCHANGED)
 
 
 def schedule_return_to_free() -> None:
