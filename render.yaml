@@ -10,7 +10,7 @@ services:
     runtime: python
     # Resting plan. The app can move this service to 1c-2g for one run, then return it here.
     # sequencer-web-plan
-    plan: 1c-2g
+    plan: free
     buildCommand: "./build.sh"
     startCommand: "./start.sh"
     healthCheckPath: /healthz/
