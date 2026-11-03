@@ -1,8 +1,9 @@
-"""Report whether this Render web service is on Free or the 2 GB plan.
+"""Switch the one Render web service between Free and the 2 GB plan.
 
-The live tier comes from the instance that is serving this process. A GitHub
-push of render.yaml deploys new code and leaves the compute plan unchanged.
-A run that finishes on the 2 GB instance writes the free plan back.
+The live tier comes from the instance that is serving this process. The
+switch writes the web service plan in render.yaml and pushes that file.
+A Blueprint sync applies the plan. A service auto-deploy does not. A run
+that finishes on the 2 GB instance writes the free plan back.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ import threading
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 from django.db import connection
 
@@ -25,7 +27,7 @@ PAID_PLAN = "1c-2g"
 FREE_PLAN = "free"
 _PLAN_UNCHANGED = (
     "Render deployed the commit and left the service on the Free plan. "
-    "Change the plan with Edit on the Compute page."
+    "The Blueprint sync did not change the plan."
 )
 _GITHUB = "https://api.github.com"
 _WEB_PLAN = re.compile(
@@ -49,7 +51,11 @@ def live_tier() -> str:
 def plan_status() -> dict:
     tier = live_tier()
     state = _state()
-    if tier == "free" and state.desired == PAID_PLAN:
+    if (
+        tier == "free"
+        and state.desired == PAID_PLAN
+        and _deployed_web_plan() == PAID_PLAN
+    ):
         _save(FREE_PLAN, _PLAN_UNCHANGED)
         state = _state()
     return {
@@ -62,14 +68,18 @@ def plan_status() -> dict:
 
 
 def request_paid_plan() -> None:
-    """Record that this service is still on the Free plan."""
+    """Ask the Blueprint to deploy this service on 1c-2g."""
     if not _on_render():
         raise RenderPlanError("Memory upgrade is available on the Render service.")
     if live_tier() == "paid":
         _save(PAID_PLAN, "")
         return
-    _save(FREE_PLAN, _PLAN_UNCHANGED)
-    raise RenderPlanError(_PLAN_UNCHANGED)
+    _save(PAID_PLAN, "")
+    try:
+        _switch(PAID_PLAN)
+    except RenderPlanError as exc:
+        _save(FREE_PLAN, str(exc))
+        raise
 
 
 def schedule_return_to_free() -> None:
@@ -90,6 +100,18 @@ def _return_worker() -> None:
         _save(FREE_PLAN, str(exc))
     finally:
         connection.close()
+
+
+def _deployed_web_plan() -> str | None:
+    path = Path(__file__).resolve().parents[3] / "render.yaml"
+    try:
+        text = path.read_text()
+    except OSError:
+        return None
+    match = _WEB_PLAN.search(text)
+    if match is None:
+        return None
+    return match.group(2)
 
 
 def set_web_plan(text: str, plan: str) -> str:
