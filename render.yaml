@@ -9,6 +9,7 @@ services:
     name: sequencer
     runtime: python
     # Resting plan. The app can move this service to 1c-2g for one run, then return it here.
+    # sequencer-web-plan
     plan: free
     buildCommand: "./build.sh"
     startCommand: "./start.sh"
@@ -38,6 +39,12 @@ services:
         sync: false
       - key: RENDER_API_KEY
         sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_REPOSITORY
+        value: dimigoescoding/Sequencer
+      - key: GITHUB_BRANCH
+        value: main
 
 databases:
   - name: sequencer-db
